@@ -132,8 +132,9 @@ func (r *ReconcileCluster) ReconcileDeployments(instance *elasticsearchv1beta1.C
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{
 							{
-								Name:  "nginx",
-								Image: "nginx",
+								Name:      "nginx",
+								Image:     "nginx",
+								Resources: pool.Resources,
 							},
 						},
 					},

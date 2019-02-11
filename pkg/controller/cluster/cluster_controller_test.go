@@ -49,9 +49,18 @@ func TestReconcile(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
 		Spec: elasticsearchv1beta1.ClusterSpec{
 			NodePools: []elasticsearchv1beta1.NodePool{
-				elasticsearchv1beta1.NodePool{Name: "master"},
-				elasticsearchv1beta1.NodePool{Name: "data"},
-				elasticsearchv1beta1.NodePool{Name: "ingest"},
+				elasticsearchv1beta1.NodePool{
+					Name:     "master",
+					Replicas: 1,
+				},
+				elasticsearchv1beta1.NodePool{
+					Name:     "data",
+					Replicas: 2,
+				},
+				elasticsearchv1beta1.NodePool{
+					Name:     "ingest",
+					Replicas: 0,
+				},
 			},
 		},
 	}

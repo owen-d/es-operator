@@ -8,8 +8,16 @@ spec:
   # Add fields here
   nodePools:
     - name: master
-      replicas: 2
+      replicas: 1
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
     - name: data
-      replicas: 2
+      replicas: 1
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
     - name: ingest
-      replicas: 2
+      replicas: 0
