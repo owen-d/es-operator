@@ -18,9 +18,6 @@ package cluster
 
 import (
 	"context"
-	"reflect"
-
-	"fmt"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -36,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"strings"
 )
 
 var log = logf.Log.WithName("controller")
@@ -109,18 +108,23 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	res, err := r.ReconcileDeployments(instance)
-	return res, err
+	if err != nil {
+		return res, err
+	}
+	return res, nil
 
 }
 
-func (r *ReconcileCluster) ReconcileDeployments(instance *elasticsearchv1beta1.Cluster) (reconcile.Result, error) {
+func (r *ReconcileCluster) ReconcileDeployments(cluster *elasticsearchv1beta1.Cluster) (reconcile.Result, error) {
 	var err error
-	for _, pool := range instance.Spec.NodePools {
-		deployName := instance.Name + fmt.Sprintf("-%s-deployment", pool.Name)
+	for _, pool := range cluster.Spec.NodePools {
+
+		deployName := strings.Join([]string{cluster.Name, pool.Name, "deployment"}, "-")
+
 		deploy := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      deployName,
-				Namespace: instance.Namespace,
+				Namespace: cluster.Namespace,
 			},
 			Spec: appsv1.DeploymentSpec{
 				Replicas: &pool.Replicas,
@@ -128,7 +132,9 @@ func (r *ReconcileCluster) ReconcileDeployments(instance *elasticsearchv1beta1.C
 					MatchLabels: map[string]string{"deployment": deployName},
 				},
 				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"deployment": deployName}},
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"deployment": deployName},
+					},
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{
 							{
@@ -142,7 +148,7 @@ func (r *ReconcileCluster) ReconcileDeployments(instance *elasticsearchv1beta1.C
 			},
 		}
 
-		if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
+		if err := controllerutil.SetControllerReference(cluster, deploy, r.scheme); err != nil {
 			return reconcile.Result{}, err
 		}
 

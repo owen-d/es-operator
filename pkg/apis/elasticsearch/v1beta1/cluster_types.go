@@ -20,10 +20,28 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"math"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	masterRole = "master"
+	dataRole   = "data"
+	ingestRole = "ingest"
+)
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// Cluster is the Schema for the clusters API
+// +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
+type Cluster struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ClusterSpec   `json:"spec,omitempty"`
+	Status ClusterStatus `json:"status,omitempty"`
+}
 
 // ClusterSpec defines the desired state of Cluster
 type ClusterSpec struct {
@@ -32,6 +50,26 @@ type ClusterSpec struct {
 
 	// TODO: allow choosing of own image/versions for es
 	NodePools []NodePool `json:"nodePools,omitempty"`
+}
+
+func (c *ClusterSpec) EligibleMasters() (res int32) {
+	for _, pool := range c.NodePools {
+		var eligible bool
+		for _, role := range pool.Roles {
+			if role == masterRole {
+				eligible = true
+			}
+		}
+
+		if eligible {
+			res += pool.Replicas
+		}
+	}
+	return res
+}
+
+func (c *ClusterSpec) Quorum() int32 {
+	return int32(math.Floor(float64(c.EligibleMasters())/2) + 1)
 }
 
 type NodePool struct {
@@ -59,20 +97,6 @@ type Persistence struct {
 type ClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-}
-
-// +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// Cluster is the Schema for the clusters API
-// +k8s:openapi-gen=true
-// +kubebuilder:subresource:status
-type Cluster struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ClusterSpec   `json:"spec,omitempty"`
-	Status ClusterStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
