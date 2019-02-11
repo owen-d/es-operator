@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"math"
+	"strings"
 )
 
 const (
@@ -43,6 +44,10 @@ type Cluster struct {
 	Status ClusterStatus `json:"status,omitempty"`
 }
 
+func (c *Cluster) DeployName(pool NodePool) string {
+	return strings.Join([]string{c.Name, pool.Name, "deployment"}, "-")
+}
+
 // ClusterSpec defines the desired state of Cluster
 type ClusterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -52,7 +57,7 @@ type ClusterSpec struct {
 	NodePools []NodePool `json:"nodePools,omitempty"`
 }
 
-func (c *ClusterSpec) EligibleMasters() (res int32) {
+func (c *ClusterSpec) MasterPools() (res []NodePool) {
 	for _, pool := range c.NodePools {
 		var eligible bool
 		for _, role := range pool.Roles {
@@ -62,8 +67,15 @@ func (c *ClusterSpec) EligibleMasters() (res int32) {
 		}
 
 		if eligible {
-			res += pool.Replicas
+			res = append(res, pool)
 		}
+	}
+	return res
+}
+
+func (c *ClusterSpec) EligibleMasters() (res int32) {
+	for _, pool := range c.MasterPools() {
+		res += pool.Replicas
 	}
 	return res
 }
