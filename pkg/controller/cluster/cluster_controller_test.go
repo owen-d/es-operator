@@ -35,13 +35,26 @@ import (
 var c client.Client
 
 var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"}}
-var depKey = types.NamespacedName{Name: "foo-deployment", Namespace: "default"}
+var depKeys = []types.NamespacedName{
+	types.NamespacedName{Name: "foo-master-deployment", Namespace: "default"},
+	types.NamespacedName{Name: "foo-data-deployment", Namespace: "default"},
+	types.NamespacedName{Name: "foo-ingest-deployment", Namespace: "default"},
+}
 
 const timeout = time.Second * 5
 
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
-	instance := &elasticsearchv1beta1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
+	instance := &elasticsearchv1beta1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+		Spec: elasticsearchv1beta1.ClusterSpec{
+			NodePools: []elasticsearchv1beta1.NodePool{
+				elasticsearchv1beta1.NodePool{Name: "master"},
+				elasticsearchv1beta1.NodePool{Name: "data"},
+				elasticsearchv1beta1.NodePool{Name: "ingest"},
+			},
+		},
+	}
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.
@@ -72,14 +85,19 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
 	deploy := &appsv1.Deployment{}
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
-		Should(gomega.Succeed())
+
+	for _, depKey := range depKeys {
+		g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+			Should(gomega.Succeed())
+	}
 
 	// Delete the Deployment and expect Reconcile to be called for Deployment deletion
 	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
-		Should(gomega.Succeed())
+	for _, depKey := range depKeys {
+		g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+			Should(gomega.Succeed())
+	}
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
 	g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).

@@ -6,4 +6,10 @@ metadata:
   name: cluster-sample
 spec:
   # Add fields here
-  foo: bar
+  nodePools:
+    - name: master
+      replicas: 2
+    - name: data
+      replicas: 2
+    - name: ingest
+      replicas: 2

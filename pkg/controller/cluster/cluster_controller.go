@@ -20,6 +20,7 @@ import (
 	"context"
 	"reflect"
 
+	"fmt"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -38,11 +39,6 @@ import (
 )
 
 var log = logf.Log.WithName("controller")
-
-/**
-* USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
-* business logic.  Delete these comments after modifying this file.*
- */
 
 // Add creates a new Cluster Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -69,8 +65,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create
-	// Uncomment watch a Deployment created by Cluster - change this for objects you create
+	// watch a Deployment created by Cluster
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &elasticsearchv1beta1.Cluster{},
@@ -113,55 +108,63 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// TODO(user): Change this to be the object type created by your controller
-	// Define the desired Deployment object
-	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name + "-deployment",
-			Namespace: instance.Namespace,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"deployment": instance.Name + "-deployment"},
+	res, err := r.ReconcileDeployments(instance)
+	return res, err
+
+}
+
+func (r *ReconcileCluster) ReconcileDeployments(instance *elasticsearchv1beta1.Cluster) (reconcile.Result, error) {
+	var err error
+	for _, pool := range instance.Spec.NodePools {
+		deployName := instance.Name + fmt.Sprintf("-%s-deployment", pool.Name)
+		deploy := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      deployName,
+				Namespace: instance.Namespace,
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"deployment": instance.Name + "-deployment"}},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx",
+			Spec: appsv1.DeploymentSpec{
+				Replicas: &pool.Replicas,
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"deployment": deployName},
+				},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"deployment": deployName}},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:  "nginx",
+								Image: "nginx",
+							},
 						},
 					},
 				},
 			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
+		}
 
-	// TODO(user): Change this for the object type created by your controller
-	// Check if the Deployment already exists
-	found := &appsv1.Deployment{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-		err = r.Create(context.TODO(), deploy)
-		return reconcile.Result{}, err
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// TODO(user): Change this for the object type created by your controller
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(deploy.Spec, found.Spec) {
-		found.Spec = deploy.Spec
-		log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-		err = r.Update(context.TODO(), found)
-		if err != nil {
+		if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
 			return reconcile.Result{}, err
 		}
+
+		found := &appsv1.Deployment{}
+		err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
+		if err != nil && errors.IsNotFound(err) {
+			log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
+			err = r.Create(context.TODO(), deploy)
+			return reconcile.Result{}, err
+		} else if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if !reflect.DeepEqual(deploy.Spec, found.Spec) {
+			found.Spec = deploy.Spec
+			log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
+			err = r.Update(context.TODO(), found)
+			if err != nil {
+
+				return reconcile.Result{}, err
+			}
+		}
 	}
+
 	return reconcile.Result{}, nil
 }
