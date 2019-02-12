@@ -120,10 +120,6 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	if !instance.Status.Exists {
-		return r.InitialCreate(instance)
-	}
-
 	res, err = r.ReconcilePDB(instance)
 	if err != nil {
 		return res, err
@@ -135,30 +131,6 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 	}
 	return res, nil
 
-}
-
-func (r *ReconcileCluster) InitialCreate(cluster *elasticsearchv1beta1.Cluster) (
-	res reconcile.Result,
-	err error,
-) {
-	res, err = r.ReconcilePDB(cluster)
-	if err != nil {
-		return res, err
-	}
-
-	res, err = r.ReconcileDeployments(cluster)
-	if err != nil {
-		return res, err
-	}
-
-	// cluster creates are the first time where we don't care about minimum_masters changes
-	// causing downtime. After setting Exists to true, this will no longer fire
-	// TODO(owen): replace this with a computable form as per k8s best practices:
-	// compute whether the cluster exists by presence of it's constituent parts.
-	cluster.Status.Exists = true
-	r.Status().Update(context.TODO(), cluster)
-
-	return res, nil
 }
 
 func (r *ReconcileCluster) ReconcilePDB(cluster *elasticsearchv1beta1.Cluster) (res reconcile.Result, err error) {
