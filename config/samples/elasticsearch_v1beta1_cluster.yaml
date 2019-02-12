@@ -19,7 +19,7 @@ spec:
       roles:
         - data
         - ingest
-      replicas: 1
+      replicas: 2
       resources:
         requests:
           memory: "64Mi"

@@ -17,10 +17,10 @@ limitations under the License.
 package v1beta1
 
 import (
+	"github.com/owen-d/es-operator/pkg/controller/util"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"math"
 	"strings"
 )
 
@@ -81,7 +81,7 @@ func (c *ClusterSpec) EligibleMasters() (res int32) {
 }
 
 func (c *ClusterSpec) Quorum() int32 {
-	return int32(math.Floor(float64(c.EligibleMasters())/2) + 1)
+	return util.ComputeQuorum(c.EligibleMasters())
 }
 
 type NodePool struct {
