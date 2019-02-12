@@ -38,17 +38,7 @@ spec:
                   name:
                     type: string
                   nodeSelector:
-                    type: object
-                  persistence:
-                    properties:
-                      enabled:
-                        type: boolean
-                      size:
-                        type: object
-                      storageClass:
-                        type: string
-                    required:
-                    - enabled
+                    description: Persistence  Persistence             `json:"persistence,omitempty"`
                     type: object
                   replicas:
                     format: int32

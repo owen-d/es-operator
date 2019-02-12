@@ -10,19 +10,19 @@ spec:
     - name: master
       roles:
         - master
-      replicas: 1
+      replicas: 3
       resources:
         requests:
           memory: "64Mi"
-          cpu: "250m"
+          cpu: "50m"
     - name: data
       roles:
         - data
         - ingest
-      replicas: 2
+      replicas: 1
       resources:
         requests:
           memory: "64Mi"
-          cpu: "250m"
+          cpu: "50m"
     - name: ingest
       replicas: 0

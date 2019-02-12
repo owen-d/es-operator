@@ -175,7 +175,7 @@ func (r *ReconcileCluster) ReconcileQuorum(cluster *elasticsearchv1beta1.Cluster
 	err = r.Get(context.TODO(), types.NamespacedName{Name: quorum.Name, Namespace: quorum.Namespace}, found)
 
 	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating quorum", "namespace", quorum.Namespace, "name", quorum.Name)
+		log.Info("Creating Quorum", "namespace", quorum.Namespace, "name", quorum.Name)
 		err = r.Create(context.TODO(), quorum)
 		return reconcile.Result{}, err
 	} else if err != nil {

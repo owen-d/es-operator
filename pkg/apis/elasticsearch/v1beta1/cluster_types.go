@@ -87,10 +87,10 @@ type NodePool struct {
 	Replicas int32  `json:"replicas,omitempty"`
 	Name     string `json:"name"`
 	// +kubebuilder:validation:Enum=master,data,ingest
-	Roles        []string                `json:"roles,omitempty"`
-	Resources    v1.ResourceRequirements `json:"resources,omitempty"`
-	Persistence  Persistence             `json:"persistence,omitempty"`
-	NodeSelector v1.NodeSelector         `json:"nodeSelector,omitempty"`
+	Roles     []string                `json:"roles,omitempty"`
+	Resources v1.ResourceRequirements `json:"resources,omitempty"`
+	// Persistence  Persistence             `json:"persistence,omitempty"`
+	NodeSelector v1.NodeSelector `json:"nodeSelector,omitempty"`
 	// TODO: add secret mounts
 	// TODO: add es configs
 	// TODO: add configMap mounts

@@ -132,7 +132,6 @@ func (in *NodePool) DeepCopyInto(out *NodePool) {
 		copy(*out, *in)
 	}
 	in.Resources.DeepCopyInto(&out.Resources)
-	in.Persistence.DeepCopyInto(&out.Persistence)
 	in.NodeSelector.DeepCopyInto(&out.NodeSelector)
 	return
 }

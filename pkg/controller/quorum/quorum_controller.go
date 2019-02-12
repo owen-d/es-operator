@@ -19,17 +19,26 @@ package quorum
 import (
 	"context"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
+	"github.com/owen-d/es-operator/pkg/controller/util"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"math"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"strings"
 )
 
 var log = logf.Log.WithName("controller")
@@ -100,12 +109,141 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return reconcile.Result{}, err
 	}
 
-	res, err = r.UpdateStatus(instance)
-	return res, err
+	if res, err = r.ReconcileStatus(instance); err != nil {
+		return res, err
+	}
+
+	/* scale downs are done stepwise (one at a time) to avoid two problems:
+	1) dropping new min masters much lower and then seeing a network partition could cause a split brain
+	2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
+	   and bring the cluster to a red state
+	*/
+	if alive := instance.Status.Alive(); instance.Spec.DesiredReplicas() < alive {
+		newQuorum := util.ComputeQuorum(alive - 1)
+		mutator := func(s *policyv1beta1.PodDisruptionBudgetSpec) {
+			min := intstr.FromInt(int(alive - 1))
+			s.MinAvailable = &min
+		}
+
+		if res, err = r.ReconcilePDB(instance, mutator); err != nil {
+			return res, err
+		}
+
+		if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
+			return res, err
+		}
+
+		// TODO(owen): this could be improved to be increased in a more granular stepwise
+		// fashion, similar to the scale downs above.
+		// It's a little more logic due to no maxAvailable/minUnavailable fields,
+		// so I'm leaving this for later
+	} else {
+		newQuorum := util.ComputeQuorum(
+			int32(math.Min(
+				float64(alive),
+				float64(instance.Spec.DesiredReplicas()),
+			)),
+		)
+		mutator := func(s *policyv1beta1.PodDisruptionBudgetSpec) {
+			maxUnavailable := intstr.FromInt(1)
+			s.MaxUnavailable = &maxUnavailable
+		}
+
+		if res, err = r.ReconcilePDB(instance, mutator); err != nil {
+			return res, err
+		}
+
+		if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
+			return res, err
+		}
+
+	}
+
+	// both paths update deployments
+	if res, err = r.ReconcileDeployments(instance); err != nil {
+		return res, err
+	}
+
+	return reconcile.Result{}, nil
 
 }
 
-func (r *ReconcileQuorum) UpdateStatus(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
+func (r *ReconcileQuorum) ReconcilePDB(
+	quorum *elasticsearchv1beta1.Quorum,
+	mapper func(*policyv1beta1.PodDisruptionBudgetSpec),
+) (reconcile.Result, error) {
+	pdbName := strings.Join([]string{quorum.Spec.ClusterName, "master", "pdb"}, "-")
+	var err error
+	var matchingDeploys []string
+	for _, pool := range quorum.Spec.NodePools {
+		matchingDeploys = append(matchingDeploys, pool.DeployName(quorum.Spec.ClusterName))
+	}
+
+	pdbSpec := policyv1beta1.PodDisruptionBudgetSpec{
+		Selector: &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				metav1.LabelSelectorRequirement{
+					Key:      "deployment",
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   matchingDeploys,
+				},
+			},
+		},
+	}
+
+	if mapper != nil {
+		mapper(&pdbSpec)
+	} else {
+		// default impl
+		maxUnavailable := intstr.FromInt(1)
+		pdbSpec.MaxUnavailable = &maxUnavailable
+	}
+
+	pdb := &policyv1beta1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pdbName,
+			Namespace: quorum.Namespace,
+		},
+		Spec: pdbSpec,
+	}
+
+	if err := controllerutil.SetControllerReference(quorum, pdb, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	found := &policyv1beta1.PodDisruptionBudget{}
+	err = r.Get(context.TODO(), types.NamespacedName{Name: pdb.Name, Namespace: pdb.Namespace}, found)
+
+	if err != nil && errors.IsNotFound(err) {
+		log.Info("Creating PodDisruptionBudget", "namespace", pdb.Namespace, "name", pdb.Name)
+		err = r.Create(context.TODO(), pdb)
+		return reconcile.Result{}, err
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if !reflect.DeepEqual(pdb.Spec, found.Spec) {
+		found.Spec = pdb.Spec
+		log.Info("Updating PodDisruptionBudget", "namespace", pdb.Namespace, "name", pdb.Name)
+		err = r.Update(context.TODO(), found)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	return reconcile.Result{}, nil
+
+}
+
+// ReconcileMinMasters first updates the configmap that is responsible for setting min_masters
+// and then pings the elasticsearch api to set it dynamically on already-provisioned nodes,
+// avoiding an otherwise necessary restart.
+// TODO(owen): implement
+func (r *ReconcileQuorum) ReconcileMinMasters(quorum *elasticsearchv1beta1.Quorum, minMasters int32) (reconcile.Result, error) {
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
 	var err error
 	deployMap := make(map[string]int32)
 
@@ -132,5 +270,66 @@ func (r *ReconcileQuorum) UpdateStatus(quorum *elasticsearchv1beta1.Quorum) (rec
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileQuorum) ReconcileDeployments(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
+	var err error
+	for _, pool := range quorum.Spec.NodePools {
+
+		deployName := pool.DeployName(quorum.Spec.ClusterName)
+
+		deploy := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      deployName,
+				Namespace: quorum.Namespace,
+			},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: &pool.Replicas,
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"deployment": deployName},
+				},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"deployment": deployName},
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:      "nginx",
+								Image:     "nginx",
+								Resources: pool.Resources,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		if err := controllerutil.SetControllerReference(quorum, deploy, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		found := &appsv1.Deployment{}
+		err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
+		if err != nil && errors.IsNotFound(err) {
+			log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
+			err = r.Create(context.TODO(), deploy)
+			return reconcile.Result{}, err
+		} else if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if !reflect.DeepEqual(deploy.Spec, found.Spec) {
+			found.Spec = deploy.Spec
+			log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
+			err = r.Update(context.TODO(), found)
+			if err != nil {
+
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
 	return reconcile.Result{}, nil
 }
