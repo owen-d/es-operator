@@ -139,6 +139,12 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 	if err != nil {
 		return res, err
 	}
+
+	res, err = r.ReconcileQuorum(instance)
+	if err != nil {
+		return res, err
+	}
+
 	return res, nil
 
 }
