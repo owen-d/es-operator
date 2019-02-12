@@ -113,6 +113,10 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
+	if res, err = r.ReconcilePDB(instance); err != nil {
+		return res, err
+	}
+
 	/* scale downs are done stepwise (one at a time) to avoid two problems:
 	1) dropping new min masters much lower and then seeing a network partition could cause a split brain
 	2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
@@ -120,14 +124,6 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 	*/
 	if alive := instance.Status.Alive(); instance.Spec.DesiredReplicas() < alive {
 		newQuorum := util.ComputeQuorum(alive - 1)
-		mutator := func(s *policyv1beta1.PodDisruptionBudgetSpec) {
-			min := intstr.FromInt(int(alive - 1))
-			s.MinAvailable = &min
-		}
-
-		if res, err = r.ReconcilePDB(instance, mutator); err != nil {
-			return res, err
-		}
 
 		if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
 			return res, err
@@ -144,14 +140,6 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 				float64(instance.Spec.DesiredReplicas()),
 			)),
 		)
-		mutator := func(s *policyv1beta1.PodDisruptionBudgetSpec) {
-			maxUnavailable := intstr.FromInt(1)
-			s.MaxUnavailable = &maxUnavailable
-		}
-
-		if res, err = r.ReconcilePDB(instance, mutator); err != nil {
-			return res, err
-		}
 
 		if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
 			return res, err
@@ -170,7 +158,6 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 
 func (r *ReconcileQuorum) ReconcilePDB(
 	quorum *elasticsearchv1beta1.Quorum,
-	mapper func(*policyv1beta1.PodDisruptionBudgetSpec),
 ) (reconcile.Result, error) {
 	pdbName := strings.Join([]string{quorum.Spec.ClusterName, "master", "pdb"}, "-")
 	var err error
@@ -179,32 +166,24 @@ func (r *ReconcileQuorum) ReconcilePDB(
 		matchingDeploys = append(matchingDeploys, pool.DeployName(quorum.Spec.ClusterName))
 	}
 
-	pdbSpec := policyv1beta1.PodDisruptionBudgetSpec{
-		Selector: &metav1.LabelSelector{
-			MatchExpressions: []metav1.LabelSelectorRequirement{
-				metav1.LabelSelectorRequirement{
-					Key:      "deployment",
-					Operator: metav1.LabelSelectorOpIn,
-					Values:   matchingDeploys,
-				},
-			},
-		},
-	}
-
-	if mapper != nil {
-		mapper(&pdbSpec)
-	} else {
-		// default impl
-		maxUnavailable := intstr.FromInt(1)
-		pdbSpec.MaxUnavailable = &maxUnavailable
-	}
-
+	maxUnavailable := intstr.FromInt(1)
 	pdb := &policyv1beta1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pdbName,
 			Namespace: quorum.Namespace,
 		},
-		Spec: pdbSpec,
+		Spec: policyv1beta1.PodDisruptionBudgetSpec{
+			MaxUnavailable: &maxUnavailable,
+			Selector: &metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					metav1.LabelSelectorRequirement{
+						Key:      "deployment",
+						Operator: metav1.LabelSelectorOpIn,
+						Values:   matchingDeploys,
+					},
+				},
+			},
+		},
 	}
 
 	if err := controllerutil.SetControllerReference(quorum, pdb, r.scheme); err != nil {
