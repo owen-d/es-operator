@@ -31,7 +31,6 @@ spec:
         spec:
           properties:
             nodePools:
-              description: 'TODO: allow choosing of own image/versions for es'
               items:
                 properties:
                   name:

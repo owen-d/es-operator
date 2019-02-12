@@ -25,16 +25,18 @@ import (
 
 // QuorumSpec defines the desired state of Quorum
 type QuorumSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+	ClusterName string     `json:"clusterName,omitempty"`
+	NodePools   []NodePool `json:"nodePools,omitempty"`
 	// Important: Run "make" to regenerate code after modifying this file
-	Selector metav1.LabelSelector
-	Minimum  int32
 }
 
 // QuorumStatus defines the observed state of Quorum
 type QuorumStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// Deployments maps deployment names to the number of alive replicas
+	Deployments map[string]int32
 }
 
 // +genclient
@@ -42,6 +44,7 @@ type QuorumStatus struct {
 
 // Quorum is the Schema for the quorums API
 // +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
 type Quorum struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

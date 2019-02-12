@@ -44,20 +44,15 @@ type Cluster struct {
 	Status ClusterStatus `json:"status,omitempty"`
 }
 
-func (c *Cluster) DeployName(pool NodePool) string {
-	return strings.Join([]string{c.Name, pool.Name, "deployment"}, "-")
-}
-
 // ClusterSpec defines the desired state of Cluster
 type ClusterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// TODO: allow choosing of own image/versions for es
 	NodePools []NodePool `json:"nodePools,omitempty"`
 }
 
-func (c *ClusterSpec) MasterPools() (res []NodePool) {
+func (c *ClusterSpec) Pools() (masterPools, dronePools []NodePool) {
 	for _, pool := range c.NodePools {
 		var eligible bool
 		for _, role := range pool.Roles {
@@ -67,14 +62,18 @@ func (c *ClusterSpec) MasterPools() (res []NodePool) {
 		}
 
 		if eligible {
-			res = append(res, pool)
+			masterPools = append(masterPools, pool)
+		} else {
+			dronePools = append(dronePools, pool)
 		}
 	}
-	return res
+
+	return masterPools, dronePools
 }
 
 func (c *ClusterSpec) EligibleMasters() (res int32) {
-	for _, pool := range c.MasterPools() {
+	masterPools, _ := c.Pools()
+	for _, pool := range masterPools {
 		res += pool.Replicas
 	}
 	return res
@@ -97,6 +96,11 @@ type NodePool struct {
 	// TODO: add configMap mounts
 	// TODO: affinity/antiaffinity
 	// TODO: ensure spreading across AZs
+	// TODO: allow choosing of own image/versions for es
+}
+
+func (p *NodePool) DeployName(clusterName string) string {
+	return strings.Join([]string{clusterName, p.Name, "deployment"}, "-")
 }
 
 type Persistence struct {

@@ -11,6 +11,8 @@ spec:
     kind: Quorum
     plural: quorums
   scope: Namespaced
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -27,6 +29,44 @@ spec:
         metadata:
           type: object
         spec:
+          properties:
+            clusterName:
+              type: string
+            nodePools:
+              items:
+                properties:
+                  name:
+                    type: string
+                  nodeSelector:
+                    type: object
+                  persistence:
+                    properties:
+                      enabled:
+                        type: boolean
+                      size:
+                        type: object
+                      storageClass:
+                        type: string
+                    required:
+                    - enabled
+                    type: object
+                  replicas:
+                    format: int32
+                    type: integer
+                  resources:
+                    type: object
+                  roles:
+                    items:
+                      enum:
+                      - master
+                      - data
+                      - ingest
+                      type: string
+                    type: array
+                required:
+                - name
+                type: object
+              type: array
           type: object
         status:
           type: object
