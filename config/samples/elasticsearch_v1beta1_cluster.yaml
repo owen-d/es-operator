@@ -8,12 +8,17 @@ spec:
   # Add fields here
   nodePools:
     - name: master
+      roles:
+        - master
       replicas: 1
       resources:
         requests:
           memory: "64Mi"
           cpu: "250m"
     - name: data
+      roles:
+        - data
+        - ingest
       replicas: 1
       resources:
         requests:

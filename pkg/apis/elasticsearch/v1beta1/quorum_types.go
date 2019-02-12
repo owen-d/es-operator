@@ -27,6 +27,8 @@ import (
 type QuorumSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Selector metav1.LabelSelector
+	Minimum  int32
 }
 
 // QuorumStatus defines the observed state of Quorum

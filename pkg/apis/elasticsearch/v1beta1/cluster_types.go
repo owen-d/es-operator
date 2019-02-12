@@ -109,6 +109,11 @@ type Persistence struct {
 type ClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// Exists is set to true once and then left that way. It is a flag to determine
+	// first round instantiation patterns, i.e. we can set a high quorum while spinning up
+	// initial nodes, but this would be disastrous if the cluster is already in use
+	Exists bool
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
