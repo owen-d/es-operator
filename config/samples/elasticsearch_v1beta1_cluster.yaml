@@ -11,6 +11,7 @@ spec:
       roles:
         - master
       replicas: 1
+      storageClass: "fast"
       resources:
         requests:
           memory: "64Mi"
@@ -18,7 +19,8 @@ spec:
     - name: master-2
       roles:
         - master
-      replicas: 5
+      replicas: 3
+      storageClass: "fast"
       resources:
         requests:
           memory: "64Mi"
@@ -28,6 +30,7 @@ spec:
         - data
         - ingest
       replicas: 1
+      storageClass: "fast"
       resources:
         requests:
           memory: "64Mi"

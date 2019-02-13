@@ -4,6 +4,12 @@ IMG ?= controller:latest
 
 all: test manager
 
+clean-pvc:
+	kubectl get pvc | tail -n +2 | awk '{print $$1}' | xargs -n 1 kubectl delete pvc
+
+# Compile but don't run tests
+build: generate fmt vet
+
 # Run tests
 test: generate fmt vet manifests
 	go test ./pkg/... ./cmd/... -coverprofile cover.out

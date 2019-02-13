@@ -17,11 +17,9 @@ limitations under the License.
 package v1beta1
 
 import (
-	"github.com/owen-d/es-operator/pkg/controller/util"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
 )
 
 const (
@@ -48,7 +46,6 @@ type Cluster struct {
 type ClusterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
 	NodePools []NodePool `json:"nodePools,omitempty"`
 }
 
@@ -79,10 +76,6 @@ func (c *ClusterSpec) EligibleMasters() (res int32) {
 	return res
 }
 
-func (c *ClusterSpec) Quorum() int32 {
-	return util.ComputeQuorum(c.EligibleMasters())
-}
-
 type NodePool struct {
 	Replicas int32  `json:"replicas,omitempty"`
 	Name     string `json:"name"`
@@ -91,16 +84,13 @@ type NodePool struct {
 	Resources v1.ResourceRequirements `json:"resources,omitempty"`
 	// Persistence  Persistence             `json:"persistence,omitempty"`
 	NodeSelector v1.NodeSelector `json:"nodeSelector,omitempty"`
+	StorageClass string          `json:"storageClass,omitempty"`
 	// TODO: add secret mounts
 	// TODO: add es configs
 	// TODO: add configMap mounts
 	// TODO: affinity/antiaffinity
 	// TODO: ensure spreading across AZs
 	// TODO: allow choosing of own image/versions for es
-}
-
-func (p *NodePool) DeployName(clusterName string) string {
-	return strings.Join([]string{clusterName, p.Name, "deployment"}, "-")
 }
 
 type Persistence struct {

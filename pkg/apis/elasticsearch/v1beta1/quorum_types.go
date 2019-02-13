@@ -42,12 +42,12 @@ type QuorumStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Deployments maps deployment names to the number of alive replicas
-	Deployments map[string]int32
+	// Alive maps statefulset names to the number of alive replicas
+	AliveReplicas map[string]int32
 }
 
 func (s *QuorumStatus) Alive() (ct int32) {
-	for _, alive := range s.Deployments {
+	for _, alive := range s.AliveReplicas {
 		ct += alive
 	}
 	return ct

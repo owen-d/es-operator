@@ -19,8 +19,8 @@ package cluster
 import (
 	"context"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
+	"github.com/owen-d/es-operator/pkg/controller/util"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -64,8 +64,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// watch a Deployment created by Cluster
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
+	// watch for changes to StatefulSet created by cluster
+	err = c.Watch(&source.Kind{Type: &appsv1.StatefulSet{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &elasticsearchv1beta1.Cluster{},
 	})
@@ -118,7 +118,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	res, err = r.ReconcileDeployments(instance)
+	res, err = r.ReconcileStatefulSets(instance)
 	if err != nil {
 		return res, err
 	}
@@ -178,69 +178,19 @@ func (r *ReconcileCluster) ReconcileQuorum(cluster *elasticsearchv1beta1.Cluster
 
 }
 
-// The cluster controller only reconciles deployments for nodes that are not master eligible.
-// Those are handled by the Quorum resource.
-func (r *ReconcileCluster) ReconcileDeployments(cluster *elasticsearchv1beta1.Cluster) (
-	reconcile.Result,
-	error,
+func (r *ReconcileCluster) ReconcileStatefulSets(cluster *elasticsearchv1beta1.Cluster) (
+	res reconcile.Result,
+	err error,
 ) {
-	var err error
 	_, dronePools := cluster.Spec.Pools()
-	for _, pool := range dronePools {
 
-		deployName := pool.DeployName(cluster.Name)
-
-		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      deployName,
-				Namespace: cluster.Namespace,
-			},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: &pool.Replicas,
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"deployment": deployName},
-				},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{"deployment": deployName},
-					},
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{
-							{
-								Name:      "nginx",
-								Image:     "nginx",
-								Resources: pool.Resources,
-							},
-						},
-					},
-				},
-			},
-		}
-
-		if err := controllerutil.SetControllerReference(cluster, deploy, r.scheme); err != nil {
-			return reconcile.Result{}, err
-		}
-
-		found := &appsv1.Deployment{}
-		err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
-		if err != nil && errors.IsNotFound(err) {
-			log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-			err = r.Create(context.TODO(), deploy)
-			return reconcile.Result{}, err
-		} else if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		if !reflect.DeepEqual(deploy.Spec, found.Spec) {
-			found.Spec = deploy.Spec
-			log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-			err = r.Update(context.TODO(), found)
-			if err != nil {
-
-				return reconcile.Result{}, err
-			}
-		}
-	}
-
-	return reconcile.Result{}, nil
+	return util.ReconcileStatefulSets(
+		r,
+		r.scheme,
+		log,
+		cluster,
+		cluster.Name,
+		cluster.Namespace,
+		dronePools,
+	)
 }

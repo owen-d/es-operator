@@ -65,8 +65,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// watch for changes to Deployments created by cluster
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
+	// watch for changes to StatefulSet created by quorum
+	err = c.Watch(&source.Kind{Type: &appsv1.StatefulSet{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &elasticsearchv1beta1.Quorum{},
 	})
@@ -111,6 +111,10 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
+	if res, err := r.ReconcileServices(instance); err != nil {
+		return res, err
+	}
+
 	var nextReplicaSize, newQuorum int32
 	/* scale downs are done stepwise (one at a time) to avoid two problems:
 	1) dropping new min masters much lower and then seeing a network partition could cause a split brain
@@ -129,12 +133,13 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		newQuorum = util.ComputeQuorum(alive)
 	}
 
+	log.Info("calculated", "nextReplicaSize", nextReplicaSize, "newQuorum", newQuorum)
+
 	if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
 		return res, err
 	}
 
-	log.Info("reconciling deployments", "nextReplicaSize", nextReplicaSize)
-	if res, err = r.ReconcileDeployments(instance, nextReplicaSize); err != nil {
+	if res, err = r.ReconcileStatefulSets(instance, nextReplicaSize); err != nil {
 		return res, err
 	}
 
@@ -152,26 +157,26 @@ func (r *ReconcileQuorum) ReconcileMinMasters(quorum *elasticsearchv1beta1.Quoru
 
 func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
 	var err error
-	deployMap := make(map[string]int32)
+	aliveMap := make(map[string]int32)
 
 	for _, pool := range quorum.Spec.NodePools {
 
-		deployName := pool.DeployName(quorum.Spec.ClusterName)
-		found := &appsv1.Deployment{}
+		name := util.StatefulSetName(quorum.Spec.ClusterName, pool.Name)
+		found := &appsv1.StatefulSet{}
 		err = r.Get(context.TODO(), types.NamespacedName{
-			Name:      deployName,
+			Name:      name,
 			Namespace: quorum.Namespace,
 		}, found)
 		if err != nil && errors.IsNotFound(err) {
-			deployMap[deployName] = 0
+			aliveMap[name] = 0
 		} else if err != nil {
 			return reconcile.Result{}, err
 		} else {
-			deployMap[deployName] = found.Status.AvailableReplicas
+			aliveMap[name] = found.Status.ReadyReplicas
 		}
 	}
 
-	quorum.Status.Deployments = deployMap
+	quorum.Status.AliveReplicas = aliveMap
 
 	err = r.Status().Update(context.TODO(), quorum)
 	if err != nil {
@@ -183,13 +188,15 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 // SplitOverPools will round-robin replica allocation, but not overfill each pool past their
 // desired replica count. It errors if supplied 0 capacity (pools with a combined 0 replicas)
 //  or if the requests exceed capacity.
-func SplitOverPools(requests int32, pools []elasticsearchv1beta1.NodePool) (
-	counts []struct {
+// Returns an updated set of pools with replicas adjusted to a total of [requests] across all pools.
+func SplitOverPools(
+	requests int32,
+	pools []elasticsearchv1beta1.NodePool,
+) ([]elasticsearchv1beta1.NodePool, error) {
+	var counts []struct {
 		int32
 		elasticsearchv1beta1.NodePool
-	},
-	err error,
-) {
+	}
 	// initialize counts
 	for _, pool := range pools {
 		counts = append(counts, struct {
@@ -237,80 +244,93 @@ func SplitOverPools(requests int32, pools []elasticsearchv1beta1.NodePool) (
 		var err error
 		cursor, err = allocateNext(cursor, counts)
 		if err != nil {
-			return counts, err
+			return nil, err
 		}
 	}
 
-	return counts, nil
+	var results []elasticsearchv1beta1.NodePool
+	for _, x := range counts {
+		adjusted := x.NodePool.DeepCopy()
+		adjusted.Replicas = x.int32
+		results = append(results, *adjusted)
+	}
+
+	return results, nil
 }
 
-func (r *ReconcileQuorum) ReconcileDeployments(
+func (r *ReconcileQuorum) ReconcileServices(
 	quorum *elasticsearchv1beta1.Quorum,
-	nextReplicaSize int32,
 ) (reconcile.Result, error) {
 	var err error
-	counts, err := SplitOverPools(nextReplicaSize, quorum.Spec.NodePools)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
 
-	for _, ct := range counts {
-		pool := ct.NodePool
-		desiredReplicas := ct.int32
-
-		deployName := pool.DeployName(quorum.Spec.ClusterName)
-
-		deploy := &appsv1.Deployment{
+	for _, pool := range quorum.Spec.NodePools {
+		name := util.StatefulSetService(quorum.Spec.ClusterName, pool.Name)
+		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      deployName,
+				Name:      name,
 				Namespace: quorum.Namespace,
 			},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: &desiredReplicas,
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"deployment": deployName},
+			Spec: corev1.ServiceSpec{
+				ClusterIP: corev1.ClusterIPNone,
+				Ports: []corev1.ServicePort{
+					corev1.ServicePort{Port: 9200},
 				},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{"deployment": deployName},
-					},
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{
-							{
-								Name:      "nginx",
-								Image:     "nginx",
-								Resources: pool.Resources,
-							},
-						},
-					},
+				Selector: map[string]string{
+					"statefulSet": util.StatefulSetName(quorum.Spec.ClusterName, pool.Name),
 				},
 			},
 		}
 
-		if err := controllerutil.SetControllerReference(quorum, deploy, r.scheme); err != nil {
+		if err = controllerutil.SetControllerReference(quorum, svc, r.scheme); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		found := &appsv1.Deployment{}
-		err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
+		found := &corev1.Service{}
+		err = r.Get(context.TODO(), types.NamespacedName{
+			Name:      svc.Name,
+			Namespace: svc.Namespace,
+		}, found)
+
 		if err != nil && errors.IsNotFound(err) {
-			log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-			err = r.Create(context.TODO(), deploy)
+			log.Info("Creating Service", "namespace", svc.Namespace, "name", svc.Name)
+			err = r.Create(context.TODO(), svc)
 			return reconcile.Result{}, err
 		} else if err != nil {
 			return reconcile.Result{}, err
 		}
 
-		if !reflect.DeepEqual(deploy.Spec, found.Spec) {
-			found.Spec = deploy.Spec
-			log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
+		if !reflect.DeepEqual(svc.Spec, found.Spec) {
+			found.Spec = svc.Spec
+			log.Info("Updating Svc", "namespace", svc.Namespace, "name", svc.Name)
 			err = r.Update(context.TODO(), found)
 			if err != nil {
-
 				return reconcile.Result{}, err
 			}
 		}
+
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileQuorum) ReconcileStatefulSets(
+	quorum *elasticsearchv1beta1.Quorum,
+	nextReplicaSize int32,
+) (reconcile.Result, error) {
+	var err error
+
+	adjustedPools, err := SplitOverPools(nextReplicaSize, quorum.Spec.NodePools)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	return util.ReconcileStatefulSets(
+		r,
+		r.scheme,
+		log,
+		quorum,
+		quorum.Spec.ClusterName,
+		quorum.Namespace,
+		adjustedPools,
+	)
 }

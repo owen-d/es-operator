@@ -53,6 +53,8 @@ spec:
                       - ingest
                       type: string
                     type: array
+                  storageClass:
+                    type: string
                 required:
                 - name
                 type: object
