@@ -34,7 +34,9 @@ import (
 
 var c client.Client
 
-var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"}}
+var expectedRequest = reconcile.Request{
+	NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"},
+}
 var depKeys = []types.NamespacedName{
 	types.NamespacedName{Name: "foo-master-deployment", Namespace: "default"},
 	types.NamespacedName{Name: "foo-data-deployment", Namespace: "default"},

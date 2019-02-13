@@ -10,7 +10,15 @@ spec:
     - name: master
       roles:
         - master
-      replicas: 3
+      replicas: 1
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "50m"
+    - name: master-2
+      roles:
+        - master
+      replicas: 5
       resources:
         requests:
           memory: "64Mi"

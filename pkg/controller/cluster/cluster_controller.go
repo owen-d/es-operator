@@ -21,12 +21,10 @@ import (
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -75,15 +73,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// watch for changes to pod disruption budget created by cluster
-	err = c.Watch(&source.Kind{Type: &policyv1beta1.PodDisruptionBudget{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &elasticsearchv1beta1.Cluster{},
-	})
-	if err != nil {
-		return err
-	}
-
 	// watch for changes to quorum created by cluster
 	err = c.Watch(&source.Kind{Type: &elasticsearchv1beta1.Quorum{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
@@ -114,7 +103,6 @@ type ReconcileCluster struct {
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=quorums,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.Result, err error) {
 	// Fetch the Cluster instance
@@ -128,11 +116,6 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
-	}
-
-	res, err = r.ReconcilePDB(instance)
-	if err != nil {
-		return res, err
 	}
 
 	res, err = r.ReconcileDeployments(instance)
@@ -185,64 +168,6 @@ func (r *ReconcileCluster) ReconcileQuorum(cluster *elasticsearchv1beta1.Cluster
 	if !reflect.DeepEqual(quorum.Spec, found.Spec) {
 		found.Spec = quorum.Spec
 		log.Info("Updating Quorum", "namespace", quorum.Namespace, "name", quorum.Name)
-		err = r.Update(context.TODO(), found)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-	}
-
-	return reconcile.Result{}, nil
-
-}
-
-// The cluster controller only reconciles the PDB for nodes that are not master eligible.
-// That is handled by the Quorum resource.
-func (r *ReconcileCluster) ReconcilePDB(cluster *elasticsearchv1beta1.Cluster) (res reconcile.Result, err error) {
-	pdbName := strings.Join([]string{cluster.Name, "drone", "pdb"}, "-")
-	var matchingDeploys []string
-	_, dronePools := cluster.Spec.Pools()
-	for _, pool := range dronePools {
-		matchingDeploys = append(matchingDeploys, pool.DeployName(cluster.Name))
-	}
-
-	maxUnavailable := intstr.FromInt(1)
-	pdb := &policyv1beta1.PodDisruptionBudget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pdbName,
-			Namespace: cluster.Namespace,
-		},
-		Spec: policyv1beta1.PodDisruptionBudgetSpec{
-			MaxUnavailable: &maxUnavailable,
-			Selector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{
-					metav1.LabelSelectorRequirement{
-						Key:      "deployment",
-						Operator: metav1.LabelSelectorOpIn,
-						Values:   matchingDeploys,
-					},
-				},
-			},
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(cluster, pdb, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	found := &policyv1beta1.PodDisruptionBudget{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: pdb.Name, Namespace: pdb.Namespace}, found)
-
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating PodDisruptionBudget", "namespace", pdb.Namespace, "name", pdb.Name)
-		err = r.Create(context.TODO(), pdb)
-		return reconcile.Result{}, err
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	if !reflect.DeepEqual(pdb.Spec, found.Spec) {
-		found.Spec = pdb.Spec
-		log.Info("Updating PodDisruptionBudget", "namespace", pdb.Namespace, "name", pdb.Name)
 		err = r.Update(context.TODO(), found)
 		if err != nil {
 			return reconcile.Result{}, err

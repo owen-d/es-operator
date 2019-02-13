@@ -57,18 +57,6 @@ rules:
   - patch
   - delete
 - apiGroups:
-  - policy
-  resources:
-  - poddisruptionbudgets
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
   - apps
   resources:
   - configmaps

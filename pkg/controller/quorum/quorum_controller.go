@@ -18,17 +18,15 @@ package quorum
 
 import (
 	"context"
+	"fmt"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
-	"math"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -38,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"strings"
 )
 
 var log = logf.Log.WithName("controller")
@@ -68,6 +65,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// watch for changes to Deployments created by cluster
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &elasticsearchv1beta1.Quorum{},
@@ -113,101 +111,31 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
-	if res, err = r.ReconcilePDB(instance); err != nil {
-		return res, err
-	}
-
+	var nextReplicaSize, newQuorum int32
 	/* scale downs are done stepwise (one at a time) to avoid two problems:
 	1) dropping new min masters much lower and then seeing a network partition could cause a split brain
 	2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
 	   and bring the cluster to a red state
 	*/
 	if alive := instance.Status.Alive(); instance.Spec.DesiredReplicas() < alive {
-		newQuorum := util.ComputeQuorum(alive - 1)
+		nextReplicaSize = alive - 1
+		newQuorum = util.ComputeQuorum(nextReplicaSize)
 
-		if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
-			return res, err
-		}
-
-		// TODO(owen): this could be improved to be increased in a more granular stepwise
-		// fashion, similar to the scale downs above.
-		// It's a little more logic due to no maxAvailable/minUnavailable fields,
-		// so I'm leaving this for later
+	} else if instance.Spec.DesiredReplicas() == alive {
+		nextReplicaSize = alive
+		newQuorum = util.ComputeQuorum(alive)
 	} else {
-		newQuorum := util.ComputeQuorum(
-			int32(math.Min(
-				float64(alive),
-				float64(instance.Spec.DesiredReplicas()),
-			)),
-		)
-
-		if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
-			return res, err
-		}
-
+		nextReplicaSize = alive + 1
+		newQuorum = util.ComputeQuorum(alive)
 	}
 
-	// both paths update deployments
-	if res, err = r.ReconcileDeployments(instance); err != nil {
+	if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
 		return res, err
 	}
 
-	return reconcile.Result{}, nil
-
-}
-
-func (r *ReconcileQuorum) ReconcilePDB(
-	quorum *elasticsearchv1beta1.Quorum,
-) (reconcile.Result, error) {
-	pdbName := strings.Join([]string{quorum.Spec.ClusterName, "master", "pdb"}, "-")
-	var err error
-	var matchingDeploys []string
-	for _, pool := range quorum.Spec.NodePools {
-		matchingDeploys = append(matchingDeploys, pool.DeployName(quorum.Spec.ClusterName))
-	}
-
-	maxUnavailable := intstr.FromInt(1)
-	pdb := &policyv1beta1.PodDisruptionBudget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pdbName,
-			Namespace: quorum.Namespace,
-		},
-		Spec: policyv1beta1.PodDisruptionBudgetSpec{
-			MaxUnavailable: &maxUnavailable,
-			Selector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{
-					metav1.LabelSelectorRequirement{
-						Key:      "deployment",
-						Operator: metav1.LabelSelectorOpIn,
-						Values:   matchingDeploys,
-					},
-				},
-			},
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(quorum, pdb, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	found := &policyv1beta1.PodDisruptionBudget{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: pdb.Name, Namespace: pdb.Namespace}, found)
-
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating PodDisruptionBudget", "namespace", pdb.Namespace, "name", pdb.Name)
-		err = r.Create(context.TODO(), pdb)
-		return reconcile.Result{}, err
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	if !reflect.DeepEqual(pdb.Spec, found.Spec) {
-		found.Spec = pdb.Spec
-		log.Info("Updating PodDisruptionBudget", "namespace", pdb.Namespace, "name", pdb.Name)
-		err = r.Update(context.TODO(), found)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	log.Info("reconciling deployments", "nextReplicaSize", nextReplicaSize)
+	if res, err = r.ReconcileDeployments(instance, nextReplicaSize); err != nil {
+		return res, err
 	}
 
 	return reconcile.Result{}, nil
@@ -252,9 +180,83 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileQuorum) ReconcileDeployments(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
+// SplitOverPools will round-robin replica allocation, but not overfill each pool past their
+// desired replica count. It errors if supplied 0 capacity (pools with a combined 0 replicas)
+//  or if the requests exceed capacity.
+func SplitOverPools(requests int32, pools []elasticsearchv1beta1.NodePool) (
+	counts []struct {
+		int32
+		elasticsearchv1beta1.NodePool
+	},
+	err error,
+) {
+	// initialize counts
+	for _, pool := range pools {
+		counts = append(counts, struct {
+			int32
+			elasticsearchv1beta1.NodePool
+		}{
+			0,
+			pool,
+		})
+	}
+
+	allocateNext := func(
+		cursor int,
+		counts []struct {
+			int32
+			elasticsearchv1beta1.NodePool
+		},
+	) (int, error) {
+
+		// allow up to one entire loop over pools
+		for i := 0; i < len(counts); i++ {
+			cur := &counts[cursor]
+			var nextCursor int
+
+			if cursor == len(counts)-1 {
+				// at end of slice, circle back
+				nextCursor = 0
+			} else {
+				nextCursor = cursor + 1
+			}
+
+			// current slot has capacity, increment
+			if cur.int32 < cur.NodePool.Replicas {
+				cur.int32 += 1
+				return nextCursor, nil
+
+			}
+			cursor = nextCursor
+		}
+
+		return cursor, fmt.Errorf("no capacity for replica in Spec")
+	}
+
+	for i, cursor := 0, 0; i < int(requests); i++ {
+		var err error
+		cursor, err = allocateNext(cursor, counts)
+		if err != nil {
+			return counts, err
+		}
+	}
+
+	return counts, nil
+}
+
+func (r *ReconcileQuorum) ReconcileDeployments(
+	quorum *elasticsearchv1beta1.Quorum,
+	nextReplicaSize int32,
+) (reconcile.Result, error) {
 	var err error
-	for _, pool := range quorum.Spec.NodePools {
+	counts, err := SplitOverPools(nextReplicaSize, quorum.Spec.NodePools)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	for _, ct := range counts {
+		pool := ct.NodePool
+		desiredReplicas := ct.int32
 
 		deployName := pool.DeployName(quorum.Spec.ClusterName)
 
@@ -264,7 +266,7 @@ func (r *ReconcileQuorum) ReconcileDeployments(quorum *elasticsearchv1beta1.Quor
 				Namespace: quorum.Namespace,
 			},
 			Spec: appsv1.DeploymentSpec{
-				Replicas: &pool.Replicas,
+				Replicas: &desiredReplicas,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"deployment": deployName},
 				},
