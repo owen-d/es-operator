@@ -22,15 +22,11 @@ import (
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -111,21 +107,17 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
-	if res, err := r.ReconcileServices(instance); err != nil {
-		return res, err
-	}
-
-	var nextReplicaSize, newQuorum int32
+	var alive, desired, nextReplicaSize, newQuorum int32
 	/* scale downs are done stepwise (one at a time) to avoid two problems:
 	1) dropping new min masters much lower and then seeing a network partition could cause a split brain
 	2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
 	   and bring the cluster to a red state
 	*/
-	if alive := instance.Status.Alive(); instance.Spec.DesiredReplicas() < alive {
+	if alive, desired = instance.Status.Alive(), instance.Spec.DesiredReplicas(); desired < alive {
 		nextReplicaSize = alive - 1
 		newQuorum = util.ComputeQuorum(nextReplicaSize)
 
-	} else if instance.Spec.DesiredReplicas() == alive {
+	} else if desired == alive {
 		nextReplicaSize = alive
 		newQuorum = util.ComputeQuorum(alive)
 	} else {
@@ -133,7 +125,13 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		newQuorum = util.ComputeQuorum(alive)
 	}
 
-	log.Info("calculated", "nextReplicaSize", nextReplicaSize, "newQuorum", newQuorum)
+	log.Info(
+		"calculated new quorum",
+		"nextReplicaSize", nextReplicaSize,
+		"quorumSize", newQuorum,
+		"currentlyAlive", alive,
+		"desired", desired,
+	)
 
 	if res, err = r.ReconcileMinMasters(instance, newQuorum); err != nil {
 		return res, err
@@ -256,61 +254,6 @@ func SplitOverPools(
 	}
 
 	return results, nil
-}
-
-func (r *ReconcileQuorum) ReconcileServices(
-	quorum *elasticsearchv1beta1.Quorum,
-) (reconcile.Result, error) {
-	var err error
-
-	for _, pool := range quorum.Spec.NodePools {
-		name := util.StatefulSetService(quorum.Spec.ClusterName, pool.Name)
-		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: quorum.Namespace,
-			},
-			Spec: corev1.ServiceSpec{
-				ClusterIP: corev1.ClusterIPNone,
-				Ports: []corev1.ServicePort{
-					corev1.ServicePort{Port: 9200},
-				},
-				Selector: map[string]string{
-					"statefulSet": util.StatefulSetName(quorum.Spec.ClusterName, pool.Name),
-				},
-			},
-		}
-
-		if err = controllerutil.SetControllerReference(quorum, svc, r.scheme); err != nil {
-			return reconcile.Result{}, err
-		}
-
-		found := &corev1.Service{}
-		err = r.Get(context.TODO(), types.NamespacedName{
-			Name:      svc.Name,
-			Namespace: svc.Namespace,
-		}, found)
-
-		if err != nil && errors.IsNotFound(err) {
-			log.Info("Creating Service", "namespace", svc.Namespace, "name", svc.Name)
-			err = r.Create(context.TODO(), svc)
-			return reconcile.Result{}, err
-		} else if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		if !reflect.DeepEqual(svc.Spec, found.Spec) {
-			found.Spec = svc.Spec
-			log.Info("Updating Svc", "namespace", svc.Namespace, "name", svc.Name)
-			err = r.Update(context.TODO(), found)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-		}
-
-	}
-
-	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileQuorum) ReconcileStatefulSets(

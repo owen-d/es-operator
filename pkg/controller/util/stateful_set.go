@@ -29,6 +29,19 @@ func ReconcileStatefulSets(
 	var err error
 	for _, pool := range pools {
 
+		// statefulsets require a headless service.
+		if res, err := ReconcileHeadlessServiceForStatefulSet(
+			client,
+			scheme,
+			log,
+			owner,
+			clusterName,
+			namespace,
+			pool,
+		); err != nil {
+			return res, err
+		}
+
 		name := StatefulSetName(clusterName, pool.Name)
 		var storageClass *string
 		if pool.StorageClass != "" {
@@ -56,6 +69,14 @@ func ReconcileStatefulSets(
 								Name:      "nginx",
 								Image:     "nginx",
 								Resources: pool.Resources,
+								LivenessProbe: &corev1.Probe{
+									InitialDelaySeconds: 10,
+									Handler: corev1.Handler{
+										Exec: &corev1.ExecAction{
+											Command: []string{"true"},
+										},
+									},
+								},
 							},
 						},
 					},
@@ -103,6 +124,67 @@ func ReconcileStatefulSets(
 
 				return reconcile.Result{}, err
 			}
+		}
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func ReconcileHeadlessServiceForStatefulSet(
+	client client.Client,
+	scheme *runtime.Scheme,
+	log logr.Logger,
+	owner metav1.Object,
+	clusterName string,
+	namespace string,
+	pool elasticsearchv1beta1.NodePool,
+) (reconcile.Result, error) {
+	var err error
+
+	name := StatefulSetService(clusterName, pool.Name)
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Ports: []corev1.ServicePort{
+				corev1.ServicePort{Port: 9200},
+			},
+			Selector: map[string]string{
+				"statefulSet": StatefulSetName(clusterName, pool.Name),
+			},
+		},
+	}
+
+	if owner != nil {
+		if err := controllerutil.SetControllerReference(owner, svc, scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	found := &corev1.Service{}
+	err = client.Get(context.TODO(), types.NamespacedName{
+		Name:      svc.Name,
+		Namespace: svc.Namespace,
+	}, found)
+
+	if err != nil && errors.IsNotFound(err) {
+		log.Info("Creating Service", "namespace", svc.Namespace, "name", svc.Name)
+		err = client.Create(context.TODO(), svc)
+		return reconcile.Result{}, err
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if !reflect.DeepEqual(svc.Spec, found.Spec) {
+		found.Spec = svc.Spec
+		log.Info("Updating Svc", "namespace", svc.Namespace, "name", svc.Name)
+
+		err = client.Update(context.TODO(), found)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 	}
 
