@@ -16,3 +16,7 @@ func StatefulSetService(cluster, setName string) string {
 func StatefulSetName(cluster, poolName string) string {
 	return strings.Join([]string{"elasticsearch", cluster, poolName, "statefulset"}, "-")
 }
+
+func PoolName(cluster, poolName string) string {
+	return strings.Join([]string{"elasticsearch", cluster, poolName, "pool"}, "-")
+}

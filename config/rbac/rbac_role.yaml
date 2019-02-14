@@ -5,26 +5,6 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - apps
-  resources:
-  - deployments
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - apps
-  resources:
-  - deployments/status
-  verbs:
-  - get
-  - update
-  - patch
-- apiGroups:
   - elasticsearch.k8s.io
   resources:
   - clusters
@@ -57,6 +37,14 @@ rules:
   - patch
   - delete
 - apiGroups:
+  - elasticsearch.k8s.io
+  resources:
+  - quorums/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
   - apps
   resources:
   - configmaps
@@ -68,26 +56,6 @@ rules:
   - update
   - patch
   - delete
-- apiGroups:
-  - apps
-  resources:
-  - deployments
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - apps
-  resources:
-  - deployments/status
-  verbs:
-  - get
-  - update
-  - patch
 - apiGroups:
   - elasticsearch.k8s.io
   resources:
@@ -131,6 +99,26 @@ rules:
 - apiGroups:
   - elasticsearch.k8s.io
   resources:
+  - pools
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - elasticsearch.k8s.io
+  resources:
+  - pools/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - elasticsearch.k8s.io
+  resources:
   - quorums
   verbs:
   - get
@@ -144,6 +132,26 @@ rules:
   - elasticsearch.k8s.io
   resources:
   - quorums/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - elasticsearch.k8s.io
+  resources:
+  - pools
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - elasticsearch.k8s.io
+  resources:
+  - pools/status
   verbs:
   - get
   - update

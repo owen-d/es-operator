@@ -27,6 +27,29 @@ spec:
         metadata:
           type: object
         spec:
+          properties:
+            name:
+              type: string
+            nodeSelector:
+              description: Persistence  Persistence             `json:"persistence,omitempty"`
+              type: object
+            replicas:
+              format: int32
+              type: integer
+            resources:
+              type: object
+            roles:
+              items:
+                enum:
+                - master
+                - data
+                - ingest
+                type: string
+              type: array
+            storageClass:
+              type: string
+          required:
+          - name
           type: object
         status:
           type: object

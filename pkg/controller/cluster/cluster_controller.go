@@ -20,7 +20,6 @@ import (
 	"context"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -64,8 +63,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// watch for changes to StatefulSet created by cluster
-	err = c.Watch(&source.Kind{Type: &appsv1.StatefulSet{}}, &handler.EnqueueRequestForOwner{
+	// watch for changes to pools created by cluster
+	err = c.Watch(&source.Kind{Type: &elasticsearchv1beta1.Pool{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &elasticsearchv1beta1.Cluster{},
 	})
@@ -98,12 +97,13 @@ type ReconcileCluster struct {
 // TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
 // a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=quorums,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=quorums/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=pools,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=pools/status,verbs=get;update;patch
 func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.Result, err error) {
 	// Fetch the Cluster instance
 	instance := &elasticsearchv1beta1.Cluster{}
@@ -118,7 +118,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	res, err = r.ReconcileStatefulSets(instance)
+	res, err = r.ReconcilePools(instance)
 	if err != nil {
 		return res, err
 	}
@@ -178,13 +178,13 @@ func (r *ReconcileCluster) ReconcileQuorum(cluster *elasticsearchv1beta1.Cluster
 
 }
 
-func (r *ReconcileCluster) ReconcileStatefulSets(cluster *elasticsearchv1beta1.Cluster) (
+func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster) (
 	res reconcile.Result,
 	err error,
 ) {
 	_, dronePools := cluster.Spec.Pools()
 
-	return util.ReconcileStatefulSets(
+	return util.ReconcilePools(
 		r,
 		r.scheme,
 		log,

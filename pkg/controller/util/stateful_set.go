@@ -17,113 +17,111 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func ReconcileStatefulSets(
+func ReconcileStatefulSet(
 	client client.Client,
 	scheme *runtime.Scheme,
 	log logr.Logger,
 	owner metav1.Object,
 	clusterName string,
 	namespace string,
-	pools []elasticsearchv1beta1.PoolSpec,
+	pool elasticsearchv1beta1.PoolSpec,
 ) (reconcile.Result, error) {
 	var err error
-	for _, pool := range pools {
 
-		// statefulsets require a headless service.
-		if res, err := ReconcileHeadlessServiceForStatefulSet(
-			client,
-			scheme,
-			log,
-			owner,
-			clusterName,
-			namespace,
-			pool,
-		); err != nil {
-			return res, err
-		}
+	// statefulsets require a headless service.
+	if res, err := ReconcileHeadlessServiceForStatefulSet(
+		client,
+		scheme,
+		log,
+		owner,
+		clusterName,
+		namespace,
+		pool,
+	); err != nil {
+		return res, err
+	}
 
-		name := StatefulSetName(clusterName, pool.Name)
-		var storageClass *string
-		if pool.StorageClass != "" {
-			storageClass = &pool.StorageClass
-		}
+	name := StatefulSetName(clusterName, pool.Name)
+	var storageClass *string
+	if pool.StorageClass != "" {
+		storageClass = &pool.StorageClass
+	}
 
-		statefulSet := &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
+	statefulSet := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas:    &pool.Replicas,
+			ServiceName: StatefulSetService(clusterName, pool.Name),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"statefulSet": name},
 			},
-			Spec: appsv1.StatefulSetSpec{
-				Replicas:    &pool.Replicas,
-				ServiceName: StatefulSetService(clusterName, pool.Name),
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"statefulSet": name},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"statefulSet": name},
 				},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{"statefulSet": name},
-					},
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{
-							{
-								Name:      "nginx",
-								Image:     "nginx",
-								Resources: pool.Resources,
-								LivenessProbe: &corev1.Probe{
-									InitialDelaySeconds: 10,
-									Handler: corev1.Handler{
-										Exec: &corev1.ExecAction{
-											Command: []string{"true"},
-										},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:      "nginx",
+							Image:     "nginx",
+							Resources: pool.Resources,
+							LivenessProbe: &corev1.Probe{
+								InitialDelaySeconds: 10,
+								Handler: corev1.Handler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"true"},
 									},
 								},
 							},
 						},
 					},
 				},
-				VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-					corev1.PersistentVolumeClaim{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: VolumeNameTemplate(clusterName),
-						},
-						Spec: corev1.PersistentVolumeClaimSpec{
-							AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: resource.MustParse("256Mi"),
-								},
+			},
+			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+				corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: VolumeNameTemplate(clusterName),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("256Mi"),
 							},
-							StorageClassName: storageClass,
 						},
+						StorageClassName: storageClass,
 					},
 				},
 			},
-		}
+		},
+	}
 
-		if owner != nil {
-			if err := controllerutil.SetControllerReference(owner, statefulSet, scheme); err != nil {
-				return reconcile.Result{}, err
-			}
-		}
-
-		found := &appsv1.StatefulSet{}
-		err = client.Get(context.TODO(), types.NamespacedName{Name: statefulSet.Name, Namespace: statefulSet.Namespace}, found)
-		if err != nil && errors.IsNotFound(err) {
-			log.Info("Creating StatefulSet", "namespace", statefulSet.Namespace, "name", statefulSet.Name)
-			err = client.Create(context.TODO(), statefulSet)
-			return reconcile.Result{}, err
-		} else if err != nil {
+	if owner != nil {
+		if err := controllerutil.SetControllerReference(owner, statefulSet, scheme); err != nil {
 			return reconcile.Result{}, err
 		}
+	}
 
-		if !reflect.DeepEqual(statefulSet.Spec, found.Spec) {
-			found.Spec = statefulSet.Spec
-			log.Info("Updating StatefulSet", "namespace", statefulSet.Namespace, "name", statefulSet.Name)
-			err = client.Update(context.TODO(), found)
-			if err != nil {
+	found := &appsv1.StatefulSet{}
+	err = client.Get(context.TODO(), types.NamespacedName{Name: statefulSet.Name, Namespace: statefulSet.Namespace}, found)
+	if err != nil && errors.IsNotFound(err) {
+		log.Info("Creating StatefulSet", "namespace", statefulSet.Namespace, "name", statefulSet.Name)
+		err = client.Create(context.TODO(), statefulSet)
+		return reconcile.Result{}, err
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
 
-				return reconcile.Result{}, err
-			}
+	if !reflect.DeepEqual(statefulSet.Spec, found.Spec) {
+		found.Spec = statefulSet.Spec
+		log.Info("Updating StatefulSet", "namespace", statefulSet.Namespace, "name", statefulSet.Name)
+		err = client.Update(context.TODO(), found)
+		if err != nil {
+
+			return reconcile.Result{}, err
 		}
 	}
 

@@ -61,8 +61,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// watch for changes to StatefulSet created by quorum
-	err = c.Watch(&source.Kind{Type: &appsv1.StatefulSet{}}, &handler.EnqueueRequestForOwner{
+	// watch for changes to pools created by quorum
+	err = c.Watch(&source.Kind{Type: &elasticsearchv1beta1.Pool{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &elasticsearchv1beta1.Quorum{},
 	})
@@ -86,10 +86,10 @@ type ReconcileQuorum struct {
 // TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
 // a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=quorums,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=quorums/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=pools,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=pools/status,verbs=get;update;patch
 func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Result, err error) {
 	instance := &elasticsearchv1beta1.Quorum{}
 	err = r.Get(context.TODO(), request.NamespacedName, instance)
@@ -107,12 +107,12 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
+	// /* scale downs are done stepwise (one at a time) to avoid two problems:
+	// 1) dropping new min masters much lower and then seeing a network partition could cause a split brain
+	// 2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
+	//    and bring the cluster to a red state
+	// */
 	var alive, desired, nextReplicaSize, newQuorum int32
-	/* scale downs are done stepwise (one at a time) to avoid two problems:
-	1) dropping new min masters much lower and then seeing a network partition could cause a split brain
-	2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
-	   and bring the cluster to a red state
-	*/
 	if alive, desired = instance.Status.Alive(), instance.Spec.DesiredReplicas(); desired < alive {
 		nextReplicaSize = alive - 1
 		newQuorum = util.ComputeQuorum(nextReplicaSize)
@@ -137,7 +137,7 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
-	if res, err = r.ReconcileStatefulSets(instance, nextReplicaSize); err != nil {
+	if res, err = r.ReconcilePools(instance); err != nil {
 		return res, err
 	}
 
@@ -256,24 +256,17 @@ func SplitOverPools(
 	return results, nil
 }
 
-func (r *ReconcileQuorum) ReconcileStatefulSets(
+func (r *ReconcileQuorum) ReconcilePools(
 	quorum *elasticsearchv1beta1.Quorum,
-	nextReplicaSize int32,
 ) (reconcile.Result, error) {
-	var err error
 
-	adjustedPools, err := SplitOverPools(nextReplicaSize, quorum.Spec.NodePools)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	return util.ReconcileStatefulSets(
+	return util.ReconcilePools(
 		r,
 		r.scheme,
 		log,
 		quorum,
 		quorum.Spec.ClusterName,
 		quorum.Namespace,
-		adjustedPools,
+		quorum.Spec.NodePools,
 	)
 }
