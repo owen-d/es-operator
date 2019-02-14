@@ -33,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"strings"
 )
 
 var log = logf.Log.WithName("controller")
@@ -136,17 +135,19 @@ func (r *ReconcileCluster) ReconcileQuorum(cluster *elasticsearchv1beta1.Cluster
 	res reconcile.Result,
 	err error,
 ) {
-	quorumName := strings.Join([]string{cluster.Name, "quorum"}, "-")
+	quorumName := util.QuorumName(cluster.Name)
 	masterPools, _ := cluster.Spec.Pools()
 
 	quorum := &elasticsearchv1beta1.Quorum{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      quorumName,
 			Namespace: cluster.Namespace,
+			Labels: map[string]string{
+				util.ClusterLabelKey: cluster.Name,
+			},
 		},
 		Spec: elasticsearchv1beta1.QuorumSpec{
-			ClusterName: cluster.Name,
-			NodePools:   masterPools,
+			NodePools: masterPools,
 		},
 	}
 
@@ -184,6 +185,10 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 ) {
 	_, dronePools := cluster.Spec.Pools()
 
+	extraLabels := map[string]string{
+		util.ClusterLabelKey: cluster.Name,
+	}
+
 	return util.ReconcilePools(
 		r,
 		r.scheme,
@@ -192,5 +197,6 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 		cluster.Name,
 		cluster.Namespace,
 		dronePools,
+		extraLabels,
 	)
 }

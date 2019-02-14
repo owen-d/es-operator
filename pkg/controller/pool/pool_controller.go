@@ -113,13 +113,45 @@ func (r *ReconcilePool) Reconcile(request reconcile.Request) (reconcile.Result, 
 		return reconcile.Result{}, err
 	}
 
+	if res, err := r.ReconcileStatus(instance); err != nil {
+		return res, err
+	}
+
+	clusterName, err := util.ExtractKey(instance.Labels, util.ClusterLabelKey)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	extraLabels := map[string]string{util.PoolLabelKey: util.PoolName(clusterName, instance.Name)}
+
 	return util.ReconcileStatefulSet(
 		r,
 		r.scheme,
 		log,
 		instance,
-		instance.Spec.ClusterName,
+		clusterName,
 		instance.Namespace,
 		instance.Spec,
+		extraLabels,
 	)
+}
+
+func (r *ReconcilePool) ReconcileStatus(pool *elasticsearchv1beta1.Pool) (reconcile.Result, error) {
+	// sets := &appsv1.StatefulSetList{}
+
+	// clusterName, err := util.ExtractKey(pool.Labels, util.ClusterLabelKey)
+	// if err != nil {
+	// 	return reconcile.Result{}, err
+	// }
+
+	// err = a.List(context.TODO(),
+	// 	client.InNamespace(pool.Namespace).
+	// 		MatchingLabels(map[string]string{
+	// 			util.PoolLabelKey: util.PoolName(clusterName, poolName),
+	// 		}),
+	// 	sets)
+	// if err != nil {
+	// 	return reconcile.Result{}, err
+	// }
+
+	return reconcile.Result{}, nil
 }

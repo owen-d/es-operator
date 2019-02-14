@@ -25,6 +25,7 @@ func ReconcileStatefulSet(
 	clusterName string,
 	namespace string,
 	pool elasticsearchv1beta1.PoolSpec,
+	extraLabels map[string]string,
 ) (reconcile.Result, error) {
 	var err error
 
@@ -51,6 +52,7 @@ func ReconcileStatefulSet(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			Labels:    extraLabels,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas:    &pool.Replicas,

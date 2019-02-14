@@ -23,9 +23,8 @@ import (
 
 // PoolSpec defines the desired state of Pool
 type PoolSpec struct {
-	ClusterName string `json:"clusterName,omitempty"`
-	Replicas    int32  `json:"replicas,omitempty"`
-	Name        string `json:"name"`
+	Replicas int32  `json:"replicas,omitempty"`
+	Name     string `json:"name"`
 	// +kubebuilder:validation:Enum=master,data,ingest
 	Roles     []string                `json:"roles,omitempty"`
 	Resources v1.ResourceRequirements `json:"resources,omitempty"`
@@ -44,6 +43,17 @@ type PoolSpec struct {
 type PoolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// ReadyReplicas maps statefulset names to the number of alive replicas.
+	// This can include statefulsets that aren't in the spec (i.e. if a cluster updates and drops a node pool)
+	ReadyReplicas map[string]int32
+}
+
+func (s *PoolStatus) Ready() (ct int32) {
+	for _, ready := range s.ReadyReplicas {
+		ct += ready
+	}
+	return ct
 }
 
 // +genclient

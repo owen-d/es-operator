@@ -1,0 +1,6 @@
+make sure things get created in correct ns
+make sure k8s reconcilers have required privileges via comments
+go over openapi field validation autogen again and update types
+
+- cant scale down properly (which nodes to del?)
+- some nodes are aggressively updating, spec/found seem equal, what gives? -- due to reflect.DeepEqual returning false for things that are equal at the api level but not in golang (i.e. defaults like targetPort being derived from port)

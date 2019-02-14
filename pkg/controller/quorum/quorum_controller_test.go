@@ -49,7 +49,6 @@ func TestReconcile(t *testing.T) {
 	instance := &elasticsearchv1beta1.Quorum{
 		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
 		Spec: elasticsearchv1beta1.QuorumSpec{
-			ClusterName: "mycluster",
 			NodePools: []elasticsearchv1beta1.PoolSpec{
 				elasticsearchv1beta1.PoolSpec{
 					Name:     "master",

@@ -21,10 +21,8 @@ import (
 	"fmt"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -112,24 +110,24 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 	// 2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
 	//    and bring the cluster to a red state
 	// */
-	var alive, desired, nextReplicaSize, newQuorum int32
-	if alive, desired = instance.Status.Alive(), instance.Spec.DesiredReplicas(); desired < alive {
-		nextReplicaSize = alive - 1
+	var ready, desired, nextReplicaSize, newQuorum int32
+	if ready, desired = instance.Status.Ready(), instance.Spec.DesiredReplicas(); desired < ready {
+		nextReplicaSize = ready - 1
 		newQuorum = util.ComputeQuorum(nextReplicaSize)
 
-	} else if desired == alive {
-		nextReplicaSize = alive
-		newQuorum = util.ComputeQuorum(alive)
+	} else if desired == ready {
+		nextReplicaSize = ready
+		newQuorum = util.ComputeQuorum(ready)
 	} else {
-		nextReplicaSize = alive + 1
-		newQuorum = util.ComputeQuorum(alive)
+		nextReplicaSize = ready + 1
+		newQuorum = util.ComputeQuorum(ready)
 	}
 
 	log.Info(
 		"calculated new quorum",
 		"nextReplicaSize", nextReplicaSize,
 		"quorumSize", newQuorum,
-		"currentlyAlive", alive,
+		"currentlyReady", ready,
 		"desired", desired,
 	)
 
@@ -154,32 +152,8 @@ func (r *ReconcileQuorum) ReconcileMinMasters(quorum *elasticsearchv1beta1.Quoru
 }
 
 func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
-	var err error
-	aliveMap := make(map[string]int32)
-
-	for _, pool := range quorum.Spec.NodePools {
-
-		name := util.StatefulSetName(quorum.Spec.ClusterName, pool.Name)
-		found := &appsv1.StatefulSet{}
-		err = r.Get(context.TODO(), types.NamespacedName{
-			Name:      name,
-			Namespace: quorum.Namespace,
-		}, found)
-		if err != nil && errors.IsNotFound(err) {
-			aliveMap[name] = 0
-		} else if err != nil {
-			return reconcile.Result{}, err
-		} else {
-			aliveMap[name] = found.Status.ReadyReplicas
-		}
-	}
-
-	quorum.Status.AliveReplicas = aliveMap
-
-	err = r.Status().Update(context.TODO(), quorum)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
+	// TODO(owen): define some way to get children pools for a quorum
+	// might need custom labeling
 	return reconcile.Result{}, nil
 }
 
@@ -260,13 +234,23 @@ func (r *ReconcileQuorum) ReconcilePools(
 	quorum *elasticsearchv1beta1.Quorum,
 ) (reconcile.Result, error) {
 
+	clusterName, err := util.ExtractKey(quorum.Labels, util.ClusterLabelKey)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	extraLabels := map[string]string{
+		util.QuorumLabelKey: quorum.Name,
+	}
+
 	return util.ReconcilePools(
 		r,
 		r.scheme,
 		log,
 		quorum,
-		quorum.Spec.ClusterName,
+		clusterName,
 		quorum.Namespace,
 		quorum.Spec.NodePools,
+		extraLabels,
 	)
 }

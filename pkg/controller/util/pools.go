@@ -22,20 +22,17 @@ func ReconcilePools(
 	clusterName string,
 	namespace string,
 	pools []elasticsearchv1beta1.PoolSpec,
+	extraLabels map[string]string,
 ) (reconcile.Result, error) {
 	var err error
 	for _, spec := range pools {
 		name := PoolName(clusterName, spec.Name)
 
-		// must set clusterName here. This should be computed and maybe put in labels
-		// or somewhere else instead
-		// TODO(owen): find out a better way to propagate clusterName to subservient CRDs
-		spec.ClusterName = clusterName
-
 		pool := &elasticsearchv1beta1.Pool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: namespace,
+				Labels:    extraLabels,
 			},
 			Spec: spec,
 		}

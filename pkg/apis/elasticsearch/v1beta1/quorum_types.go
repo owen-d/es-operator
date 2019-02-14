@@ -25,8 +25,7 @@ import (
 
 // QuorumSpec defines the desired state of Quorum
 type QuorumSpec struct {
-	ClusterName string     `json:"clusterName,omitempty"`
-	NodePools   []PoolSpec `json:"nodePools,omitempty"`
+	NodePools []PoolSpec `json:"nodePools,omitempty"`
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
@@ -42,13 +41,14 @@ type QuorumStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Alive maps statefulset names to the number of alive replicas
-	AliveReplicas map[string]int32
+	// Ready maps pool names to the number of alive replicas.
+	// This can include replicas that aren't in the spec (i.e. if a cluster updates and drops a node pool)
+	ReadyPools map[string]int32
 }
 
-func (s *QuorumStatus) Alive() (ct int32) {
-	for _, alive := range s.AliveReplicas {
-		ct += alive
+func (s *QuorumStatus) Ready() (ct int32) {
+	for _, ready := range s.ReadyPools {
+		ct += ready
 	}
 	return ct
 }
