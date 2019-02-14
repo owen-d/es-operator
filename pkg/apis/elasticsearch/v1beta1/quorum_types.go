@@ -26,7 +26,7 @@ import (
 // QuorumSpec defines the desired state of Quorum
 type QuorumSpec struct {
 	ClusterName string     `json:"clusterName,omitempty"`
-	NodePools   []NodePool `json:"nodePools,omitempty"`
+	NodePools   []PoolSpec `json:"nodePools,omitempty"`
 	// Important: Run "make" to regenerate code after modifying this file
 }
 

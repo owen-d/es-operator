@@ -24,7 +24,7 @@ func ReconcileStatefulSets(
 	owner metav1.Object,
 	clusterName string,
 	namespace string,
-	pools []elasticsearchv1beta1.NodePool,
+	pools []elasticsearchv1beta1.PoolSpec,
 ) (reconcile.Result, error) {
 	var err error
 	for _, pool := range pools {
@@ -137,7 +137,7 @@ func ReconcileHeadlessServiceForStatefulSet(
 	owner metav1.Object,
 	clusterName string,
 	namespace string,
-	pool elasticsearchv1beta1.NodePool,
+	pool elasticsearchv1beta1.PoolSpec,
 ) (reconcile.Result, error) {
 	var err error
 

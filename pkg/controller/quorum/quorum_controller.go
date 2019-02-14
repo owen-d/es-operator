@@ -189,17 +189,17 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 // Returns an updated set of pools with replicas adjusted to a total of [requests] across all pools.
 func SplitOverPools(
 	requests int32,
-	pools []elasticsearchv1beta1.NodePool,
-) ([]elasticsearchv1beta1.NodePool, error) {
+	pools []elasticsearchv1beta1.PoolSpec,
+) ([]elasticsearchv1beta1.PoolSpec, error) {
 	var counts []struct {
 		int32
-		elasticsearchv1beta1.NodePool
+		elasticsearchv1beta1.PoolSpec
 	}
 	// initialize counts
 	for _, pool := range pools {
 		counts = append(counts, struct {
 			int32
-			elasticsearchv1beta1.NodePool
+			elasticsearchv1beta1.PoolSpec
 		}{
 			0,
 			pool,
@@ -210,7 +210,7 @@ func SplitOverPools(
 		cursor int,
 		counts []struct {
 			int32
-			elasticsearchv1beta1.NodePool
+			elasticsearchv1beta1.PoolSpec
 		},
 	) (int, error) {
 
@@ -227,7 +227,7 @@ func SplitOverPools(
 			}
 
 			// current slot has capacity, increment
-			if cur.int32 < cur.NodePool.Replicas {
+			if cur.int32 < cur.PoolSpec.Replicas {
 				cur.int32 += 1
 				return nextCursor, nil
 
@@ -246,9 +246,9 @@ func SplitOverPools(
 		}
 	}
 
-	var results []elasticsearchv1beta1.NodePool
+	var results []elasticsearchv1beta1.PoolSpec
 	for _, x := range counts {
-		adjusted := x.NodePool.DeepCopy()
+		adjusted := x.PoolSpec.DeepCopy()
 		adjusted.Replicas = x.int32
 		results = append(results, *adjusted)
 	}

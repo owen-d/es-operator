@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package quorum
+package pool
 
 import (
 	"testing"
@@ -34,34 +34,14 @@ import (
 
 var c client.Client
 
-var expectedRequest = reconcile.Request{
-	NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"},
-}
-var depKeys = []types.NamespacedName{
-	types.NamespacedName{Name: "foo-master-deployment", Namespace: "default"},
-	types.NamespacedName{Name: "foo-master-2-deployment", Namespace: "default"},
-}
+var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"}}
+var depKey = types.NamespacedName{Name: "foo-deployment", Namespace: "default"}
 
 const timeout = time.Second * 5
 
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
-	instance := &elasticsearchv1beta1.Quorum{
-		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
-		Spec: elasticsearchv1beta1.QuorumSpec{
-			ClusterName: "mycluster",
-			NodePools: []elasticsearchv1beta1.PoolSpec{
-				elasticsearchv1beta1.PoolSpec{
-					Name:     "master",
-					Replicas: 1,
-				},
-				elasticsearchv1beta1.PoolSpec{
-					Name:     "master-2",
-					Replicas: 1,
-				},
-			},
-		},
-	}
+	instance := &elasticsearchv1beta1.Pool{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.
@@ -79,7 +59,7 @@ func TestReconcile(t *testing.T) {
 		mgrStopped.Wait()
 	}()
 
-	// Create the Quorum object and expect the Reconcile and Deployment to be created
+	// Create the Pool object and expect the Reconcile and Deployment to be created
 	err = c.Create(context.TODO(), instance)
 	// The instance object may not be a valid object because it might be missing some required fields.
 	// Please modify the instance object by adding required fields and then remove the following if statement.
@@ -92,18 +72,15 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
 	deploy := &appsv1.Deployment{}
-	for _, depKey := range depKeys {
-		g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
-			Should(gomega.Succeed())
-	}
+	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+		Should(gomega.Succeed())
 
 	// Delete the Deployment and expect Reconcile to be called for Deployment deletion
 	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
-	for _, depKey := range depKeys {
-		g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
-			Should(gomega.Succeed())
-	}
+	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+		Should(gomega.Succeed())
+
 	// Manually delete Deployment since GC isn't enabled in the test control plane
 	g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).
 		Should(gomega.MatchError("deployments.apps \"foo-deployment\" not found"))
