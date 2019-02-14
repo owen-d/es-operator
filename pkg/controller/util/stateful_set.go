@@ -42,7 +42,7 @@ func ReconcileStatefulSet(
 		return res, err
 	}
 
-	name := StatefulSetName(clusterName, pool.Name)
+	name := StatefulSetName(clusterName, pool.Name, pool.IsMasterEligible())
 	var storageClass *string
 	if pool.StorageClass != "" {
 		storageClass = &pool.StorageClass
@@ -58,11 +58,11 @@ func ReconcileStatefulSet(
 			Replicas:    &pool.Replicas,
 			ServiceName: StatefulSetService(clusterName, pool.Name),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"statefulSet": name},
+				MatchLabels: map[string]string{StatefulSetKey: name},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"statefulSet": name},
+					Labels: map[string]string{StatefulSetKey: name},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -153,7 +153,7 @@ func ReconcileHeadlessServiceForStatefulSet(
 				corev1.ServicePort{Port: 9200},
 			},
 			Selector: map[string]string{
-				"statefulSet": StatefulSetName(clusterName, pool.Name),
+				StatefulSetKey: StatefulSetName(clusterName, pool.Name, pool.IsMasterEligible()),
 			},
 		},
 	}

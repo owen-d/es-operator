@@ -67,14 +67,6 @@ func (c *ClusterSpec) Pools() (masterPools, dronePools []PoolSpec) {
 	return masterPools, dronePools
 }
 
-func (c *ClusterSpec) EligibleMasters() (res int32) {
-	masterPools, _ := c.Pools()
-	for _, pool := range masterPools {
-		res += pool.Replicas
-	}
-	return res
-}
-
 type Persistence struct {
 	Enabled      bool              `json:"enabled"`
 	Size         resource.Quantity `json:"size,omitempty"`
@@ -82,10 +74,7 @@ type Persistence struct {
 }
 
 // ClusterStatus defines the observed state of Cluster
-type ClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-}
+type ClusterStatus struct{}
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 

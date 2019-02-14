@@ -23,6 +23,7 @@ import (
 	"github.com/owen-d/es-operator/pkg/controller/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -111,7 +112,7 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 	//    and bring the cluster to a red state
 	// */
 	var ready, desired, nextReplicaSize, newQuorum int32
-	if ready, desired = instance.Status.Ready(), instance.Spec.DesiredReplicas(); desired < ready {
+	if ready, desired = instance.Status.ReadyReplicas(), instance.Spec.DesiredReplicas(); desired < ready {
 		nextReplicaSize = ready - 1
 		newQuorum = util.ComputeQuorum(nextReplicaSize)
 
@@ -152,8 +153,41 @@ func (r *ReconcileQuorum) ReconcileMinMasters(quorum *elasticsearchv1beta1.Quoru
 }
 
 func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
-	// TODO(owen): define some way to get children pools for a quorum
-	// might need custom labeling
+	var err error
+	pools := &elasticsearchv1beta1.PoolList{}
+
+	err = r.List(context.TODO(),
+		client.MatchingField("status.masterEligible", "true").
+			InNamespace(quorum.Namespace).
+			MatchingLabels(map[string]string{
+				util.QuorumLabelKey: quorum.Name,
+			}),
+		pools)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	current := make(map[string]elasticsearchv1beta1.PoolSetMetrics)
+	for _, pool := range pools.Items {
+		poolMetrics := elasticsearchv1beta1.PoolSetMetrics{}
+		for _, set := range pool.Status.StatefulSets {
+			poolMetrics.Replicas += set.Replicas
+			poolMetrics.Ready += set.Ready
+		}
+		current[pool.Name] = poolMetrics
+	}
+
+	newStatus := quorum.Status.DeepCopy()
+	newStatus.ReadyPools = current
+
+	if !reflect.DeepEqual(newStatus, quorum.Status) {
+		quorum.Status = *newStatus
+		if err = r.Status().Update(context.TODO(), quorum); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
 	return reconcile.Result{}, nil
 }
 

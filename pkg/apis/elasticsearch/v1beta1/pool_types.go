@@ -39,6 +39,15 @@ type PoolSpec struct {
 	// TODO: allow choosing of own image/versions for es
 }
 
+func (s *PoolSpec) IsMasterEligible() bool {
+	for _, role := range s.Roles {
+		if role == masterRole {
+			return true
+		}
+	}
+	return false
+}
+
 // PoolStatus defines the observed state of Pool
 type PoolStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -46,12 +55,19 @@ type PoolStatus struct {
 
 	// ReadyReplicas maps statefulset names to the number of alive replicas.
 	// This can include statefulsets that aren't in the spec (i.e. if a cluster updates and drops a node pool)
-	ReadyReplicas map[string]int32
+	StatefulSets map[string]PoolSetMetrics `json:"statefulSets,omitempty"`
+	// this cannot be omitted by the api as we may need to query on false values
+	MasterEligible bool `json:"masterEligible"`
 }
 
-func (s *PoolStatus) Ready() (ct int32) {
-	for _, ready := range s.ReadyReplicas {
-		ct += ready
+type PoolSetMetrics struct {
+	Replicas int32
+	Ready    int32
+}
+
+func (s *PoolStatus) ReadyReplicas() (ct int32) {
+	for _, stats := range s.StatefulSets {
+		ct += stats.Ready
 	}
 	return ct
 }

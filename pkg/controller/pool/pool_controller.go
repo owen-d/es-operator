@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -136,22 +137,42 @@ func (r *ReconcilePool) Reconcile(request reconcile.Request) (reconcile.Result, 
 }
 
 func (r *ReconcilePool) ReconcileStatus(pool *elasticsearchv1beta1.Pool) (reconcile.Result, error) {
-	// sets := &appsv1.StatefulSetList{}
+	sets := &appsv1.StatefulSetList{}
 
-	// clusterName, err := util.ExtractKey(pool.Labels, util.ClusterLabelKey)
-	// if err != nil {
-	// 	return reconcile.Result{}, err
-	// }
+	clusterName, err := util.ExtractKey(pool.Labels, util.ClusterLabelKey)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
-	// err = a.List(context.TODO(),
-	// 	client.InNamespace(pool.Namespace).
-	// 		MatchingLabels(map[string]string{
-	// 			util.PoolLabelKey: util.PoolName(clusterName, poolName),
-	// 		}),
-	// 	sets)
-	// if err != nil {
-	// 	return reconcile.Result{}, err
-	// }
+	err = r.List(context.TODO(),
+		client.
+			InNamespace(pool.Namespace).
+			MatchingLabels(map[string]string{
+				util.PoolLabelKey: util.PoolName(clusterName, pool.Name),
+			}),
+		sets)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	current := make(map[string]elasticsearchv1beta1.PoolSetMetrics)
+	for _, set := range sets.Items {
+		current[set.Name] = elasticsearchv1beta1.PoolSetMetrics{
+			Replicas: set.Status.Replicas,
+			Ready:    set.Status.ReadyReplicas,
+		}
+	}
+
+	newStatus := pool.Status.DeepCopy()
+	newStatus.StatefulSets = current
+	newStatus.MasterEligible = pool.Spec.IsMasterEligible()
+
+	if !reflect.DeepEqual(newStatus, pool.Status) {
+		pool.Status = *newStatus
+		if err = r.Status().Update(context.TODO(), pool); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 
 	return reconcile.Result{}, nil
 }
