@@ -55,7 +55,7 @@ type PoolStatus struct {
 
 	// ReadyReplicas maps statefulset names to the number of alive replicas.
 	// This can include statefulsets that aren't in the spec (i.e. if a cluster updates and drops a node pool)
-	StatefulSets map[string]PoolSetMetrics `json:"statefulSets,omitempty"`
+	StatefulSets map[string]*PoolSetMetrics `json:"statefulSets,omitempty"`
 	// this cannot be omitted by the api as we may need to query on false values
 	MasterEligible bool `json:"masterEligible"`
 }

@@ -149,9 +149,9 @@ func (r *ReconcilePool) ReconcileStatus(pool *elasticsearchv1beta1.Pool) (reconc
 		return reconcile.Result{}, err
 	}
 
-	current := make(map[string]elasticsearchv1beta1.PoolSetMetrics)
+	current := make(map[string]*elasticsearchv1beta1.PoolSetMetrics)
 	for _, set := range sets.Items {
-		current[set.Name] = elasticsearchv1beta1.PoolSetMetrics{
+		current[set.Name] = &elasticsearchv1beta1.PoolSetMetrics{
 			ResolvedName: set.Name,
 			Replicas:     set.Status.Replicas,
 			Ready:        set.Status.ReadyReplicas,

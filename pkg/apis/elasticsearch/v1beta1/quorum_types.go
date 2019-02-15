@@ -43,11 +43,11 @@ type QuorumStatus struct {
 
 	// Ready maps pool names to the number of alive replicas.
 	// This can include replicas that aren't in the spec (i.e. if a cluster updates and drops a node pool)
-	ReadyPools map[string]PoolSetMetrics
+	Pools map[string]*PoolSetMetrics `json:"readyPools,omitempty"`
 }
 
 func (s *QuorumStatus) ReadyReplicas() (ct int32) {
-	for _, stats := range s.ReadyPools {
+	for _, stats := range s.Pools {
 		ct += stats.Ready
 	}
 	return ct

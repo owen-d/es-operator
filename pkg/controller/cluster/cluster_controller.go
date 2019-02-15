@@ -229,7 +229,7 @@ func (r *ReconcileCluster) ReconcileStatus(cluster *elasticsearchv1beta1.Cluster
 		return reconcile.Result{}, err
 	}
 
-	current := make(map[string]elasticsearchv1beta1.PoolSetMetrics)
+	current := make(map[string]*elasticsearchv1beta1.PoolSetMetrics)
 	for _, pool := range pools.Items {
 		poolMetrics := elasticsearchv1beta1.PoolSetMetrics{
 			ResolvedName: pool.Name,
@@ -238,7 +238,7 @@ func (r *ReconcileCluster) ReconcileStatus(cluster *elasticsearchv1beta1.Cluster
 			poolMetrics.Replicas += set.Replicas
 			poolMetrics.Ready += set.Ready
 		}
-		current[pool.Spec.Name] = poolMetrics
+		current[pool.Spec.Name] = &poolMetrics
 	}
 
 	newStatus := cluster.Status.DeepCopy()

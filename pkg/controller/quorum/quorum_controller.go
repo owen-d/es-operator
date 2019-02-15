@@ -168,7 +168,7 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 		return reconcile.Result{}, err
 	}
 
-	current := make(map[string]elasticsearchv1beta1.PoolSetMetrics)
+	current := make(map[string]*elasticsearchv1beta1.PoolSetMetrics)
 	for _, pool := range pools.Items {
 		poolMetrics := elasticsearchv1beta1.PoolSetMetrics{
 			ResolvedName: pool.Name,
@@ -177,11 +177,11 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 			poolMetrics.Replicas += set.Replicas
 			poolMetrics.Ready += set.Ready
 		}
-		current[pool.Spec.Name] = poolMetrics
+		current[pool.Spec.Name] = &poolMetrics
 	}
 
 	newStatus := quorum.Status.DeepCopy()
-	newStatus.ReadyPools = current
+	newStatus.Pools = current
 
 	if !reflect.DeepEqual(newStatus, quorum.Status) {
 		quorum.Status = *newStatus
