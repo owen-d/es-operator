@@ -77,7 +77,7 @@ type Persistence struct {
 type ClusterStatus struct {
 	// Ready maps pool names to the number of alive replicas.
 	// This can include replicas that aren't in the spec (i.e. if a cluster updates and drops a node pool)
-	DronePools map[string]PoolSetMetrics
+	DronePools map[string]PoolSetMetrics `json:"dronePools,omitempty"`
 }
 
 func (s *ClusterStatus) ReadyReplicas() (ct int32) {

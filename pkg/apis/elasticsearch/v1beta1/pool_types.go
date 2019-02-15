@@ -61,8 +61,9 @@ type PoolStatus struct {
 }
 
 type PoolSetMetrics struct {
-	Replicas int32
-	Ready    int32
+	ResolvedName string `json:"resolvedName,omitempty"`
+	Replicas     int32  `json:"replicas,omitempty"`
+	Ready        int32  `json:"ready,omitempty"`
 }
 
 func (s *PoolStatus) ReadyReplicas() (ct int32) {
