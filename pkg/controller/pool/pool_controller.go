@@ -90,8 +90,6 @@ type ReconcilePool struct {
 
 // Reconcile reads that state of the cluster for a Pool object and makes changes based on the state read
 // and what is in the Pool.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
-// a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
@@ -122,7 +120,7 @@ func (r *ReconcilePool) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	extraLabels := map[string]string{util.PoolLabelKey: util.PoolName(clusterName, instance.Name)}
+	extraLabels := map[string]string{util.PoolLabelKey: instance.Name}
 
 	return util.ReconcileStatefulSet(
 		r,
@@ -137,18 +135,14 @@ func (r *ReconcilePool) Reconcile(request reconcile.Request) (reconcile.Result, 
 }
 
 func (r *ReconcilePool) ReconcileStatus(pool *elasticsearchv1beta1.Pool) (reconcile.Result, error) {
+	var err error
 	sets := &appsv1.StatefulSetList{}
-
-	clusterName, err := util.ExtractKey(pool.Labels, util.ClusterLabelKey)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
 
 	err = r.List(context.TODO(),
 		client.
 			InNamespace(pool.Namespace).
 			MatchingLabels(map[string]string{
-				util.PoolLabelKey: util.PoolName(clusterName, pool.Name),
+				util.PoolLabelKey: pool.Name,
 			}),
 		sets)
 	if err != nil {

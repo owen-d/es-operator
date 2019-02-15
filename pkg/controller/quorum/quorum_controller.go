@@ -157,7 +157,11 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 	pools := &elasticsearchv1beta1.PoolList{}
 
 	err = r.List(context.TODO(),
-		client.MatchingField("status.masterEligible", "true").
+		client.
+			// TODO(owen): quorum should only update status with master eligible pools.
+			// A pool could be changed from master eligible to non-master eligible.
+			// This could also be gated by webhooks.
+			// MatchingField("status.masterEligible", "true").
 			InNamespace(quorum.Namespace).
 			MatchingLabels(map[string]string{
 				util.QuorumLabelKey: quorum.Name,
@@ -274,7 +278,8 @@ func (r *ReconcileQuorum) ReconcilePools(
 	}
 
 	extraLabels := map[string]string{
-		util.QuorumLabelKey: quorum.Name,
+		util.QuorumLabelKey:  quorum.Name,
+		util.ClusterLabelKey: clusterName,
 	}
 
 	return util.ReconcilePools(

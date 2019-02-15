@@ -30,8 +30,6 @@ spec:
           type: object
         spec:
           properties:
-            clusterName:
-              type: string
             nodePools:
               items:
                 properties:

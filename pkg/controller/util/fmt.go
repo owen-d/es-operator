@@ -5,26 +5,28 @@ import (
 )
 
 func VolumeNameTemplate(cluster string) string {
-	return strings.Join([]string{"elasticsearch", cluster, "data"}, "-")
+	return strings.Join([]string{cluster, "data"}, "-")
 }
 
 // This configures the required headless service used in statefulsets
 func StatefulSetService(cluster, setName string) string {
-	return strings.Join([]string{"elasticsearch", cluster, setName, "headless"}, "-")
+	return strings.Join([]string{cluster, setName, "headless"}, "-")
 }
 
 func StatefulSetName(cluster, poolName string, isQuorum bool) string {
-	args := []string{"elasticsearch", cluster, poolName, "statefulset"}
+	var args []string
 	if isQuorum {
-		args = append(args, "quorum")
+		args = []string{cluster, "quorum", poolName}
+	} else {
+		args = []string{cluster, "drone", poolName}
 	}
 	return strings.Join(args, "-")
 }
 
 func PoolName(cluster, poolName string) string {
-	return strings.Join([]string{cluster, poolName, "pool"}, "-")
+	return strings.Join([]string{cluster, poolName}, "-")
 }
 
 func QuorumName(cluster string) string {
-	return strings.Join([]string{cluster, "quorum"}, "-")
+	return strings.Join([]string{cluster}, "-")
 }

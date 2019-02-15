@@ -77,6 +77,7 @@ func (s *PoolStatus) ReadyReplicas() (ct int32) {
 
 // Pool is the Schema for the pools API
 // +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
 type Pool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

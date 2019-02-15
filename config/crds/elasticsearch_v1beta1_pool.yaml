@@ -11,6 +11,8 @@ spec:
     kind: Pool
     plural: pools
   scope: Namespaced
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -52,6 +54,18 @@ spec:
           - name
           type: object
         status:
+          properties:
+            masterEligible:
+              description: this cannot be omitted by the api as we may need to query
+                on false values
+              type: boolean
+            statefulSets:
+              description: ReadyReplicas maps statefulset names to the number of alive
+                replicas. This can include statefulsets that aren't in the spec (i.e.
+                if a cluster updates and drops a node pool)
+              type: object
+          required:
+          - masterEligible
           type: object
   version: v1beta1
 status:
