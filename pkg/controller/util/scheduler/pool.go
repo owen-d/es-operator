@@ -26,7 +26,7 @@ func ToStats(specs []elasticsearchv1beta1.PoolSpec, metricsList map[string]*elas
 		poolMap[spec.Name] = &PoolStats{
 			Name:     spec.Name,
 			Desired:  spec.Replicas,
-			Dangling: true,
+			Dangling: false,
 		}
 	}
 
@@ -37,7 +37,7 @@ func ToStats(specs []elasticsearchv1beta1.PoolSpec, metricsList map[string]*elas
 				Name:     name,
 				Ready:    metrics.Ready,
 				Desired:  0,
-				Dangling: false,
+				Dangling: true,
 				// until overridden, schedule with the number of replicas currently ready.
 				ScheduleReplicas: stats.Ready,
 			}

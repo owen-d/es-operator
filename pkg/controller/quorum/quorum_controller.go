@@ -18,9 +18,9 @@ package quorum
 
 import (
 	"context"
-	"fmt"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
+	"github.com/owen-d/es-operator/pkg/controller/util/scheduler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"reflect"
@@ -111,22 +111,15 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 	// 2) master eligible nodes may also be data nodes. Therefore we don't want to carelessly delete shards
 	//    and bring the cluster to a red state
 	// */
-	var ready, desired, nextReplicaSize, newQuorum int32
+	var ready, desired, newQuorum int32
 	if ready, desired = instance.Status.ReadyReplicas(), instance.Spec.DesiredReplicas(); desired < ready {
-		nextReplicaSize = ready - 1
-		newQuorum = util.ComputeQuorum(nextReplicaSize)
-
-	} else if desired == ready {
-		nextReplicaSize = ready
-		newQuorum = util.ComputeQuorum(ready)
+		newQuorum = util.ComputeQuorum(ready - 1)
 	} else {
-		nextReplicaSize = ready + 1
 		newQuorum = util.ComputeQuorum(ready)
 	}
 
 	log.Info(
 		"calculated new quorum",
-		"nextReplicaSize", nextReplicaSize,
 		"quorumSize", newQuorum,
 		"currentlyReady", ready,
 		"desired", desired,
@@ -136,7 +129,7 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return res, err
 	}
 
-	if res, err = r.ReconcilePools(instance); err != nil {
+	if res, err = r.ReconcilePools(instance, desired); err != nil {
 		return res, err
 	}
 
@@ -193,81 +186,9 @@ func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (
 	return reconcile.Result{}, nil
 }
 
-// SplitOverPools will round-robin replica allocation, but not overfill each pool past their
-// desired replica count. It errors if supplied 0 capacity (pools with a combined 0 replicas)
-//  or if the requests exceed capacity.
-// Returns an updated set of pools with replicas adjusted to a total of [requests] across all pools.
-func SplitOverPools(
-	requests int32,
-	pools []elasticsearchv1beta1.PoolSpec,
-) ([]elasticsearchv1beta1.PoolSpec, error) {
-	var counts []struct {
-		int32
-		elasticsearchv1beta1.PoolSpec
-	}
-	// initialize counts
-	for _, pool := range pools {
-		counts = append(counts, struct {
-			int32
-			elasticsearchv1beta1.PoolSpec
-		}{
-			0,
-			pool,
-		})
-	}
-
-	allocateNext := func(
-		cursor int,
-		counts []struct {
-			int32
-			elasticsearchv1beta1.PoolSpec
-		},
-	) (int, error) {
-
-		// allow up to one entire loop over pools
-		for i := 0; i < len(counts); i++ {
-			cur := &counts[cursor]
-			var nextCursor int
-
-			if cursor == len(counts)-1 {
-				// at end of slice, circle back
-				nextCursor = 0
-			} else {
-				nextCursor = cursor + 1
-			}
-
-			// current slot has capacity, increment
-			if cur.int32 < cur.PoolSpec.Replicas {
-				cur.int32 += 1
-				return nextCursor, nil
-
-			}
-			cursor = nextCursor
-		}
-
-		return cursor, fmt.Errorf("no capacity for replica in Spec")
-	}
-
-	for i, cursor := 0, 0; i < int(requests); i++ {
-		var err error
-		cursor, err = allocateNext(cursor, counts)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	var results []elasticsearchv1beta1.PoolSpec
-	for _, x := range counts {
-		adjusted := x.PoolSpec.DeepCopy()
-		adjusted.Replicas = x.int32
-		results = append(results, *adjusted)
-	}
-
-	return results, nil
-}
-
 func (r *ReconcileQuorum) ReconcilePools(
 	quorum *elasticsearchv1beta1.Quorum,
+	desired int32,
 ) (reconcile.Result, error) {
 
 	clusterName, err := util.ExtractKey(quorum.Labels, util.ClusterLabelKey)
@@ -280,6 +201,27 @@ func (r *ReconcileQuorum) ReconcilePools(
 		util.ClusterLabelKey: clusterName,
 	}
 
+	stats, err := scheduler.PoolsForScheduling(
+		desired,
+		scheduler.ToStats(
+			quorum.Spec.NodePools,
+			quorum.Status.Pools,
+		),
+	)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	specs, err := util.ToPools(
+		r,
+		quorum.Namespace,
+		quorum.Spec.NodePools,
+		stats,
+	)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return util.ReconcilePools(
 		r,
 		r.scheme,
@@ -287,7 +229,7 @@ func (r *ReconcileQuorum) ReconcilePools(
 		quorum,
 		clusterName,
 		quorum.Namespace,
-		quorum.Spec.NodePools,
+		specs,
 		extraLabels,
 	)
 }

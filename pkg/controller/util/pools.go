@@ -4,6 +4,7 @@ import (
 	"context"
 	logr "github.com/go-logr/logr"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
+	"github.com/owen-d/es-operator/pkg/controller/util/scheduler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,4 +69,49 @@ func ReconcilePools(
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func SpecByName(
+	name string,
+	specs []elasticsearchv1beta1.PoolSpec,
+) (res elasticsearchv1beta1.PoolSpec, exists bool) {
+	for _, spec := range specs {
+		if spec.Name == name {
+			return spec, true
+		}
+	}
+	return res, false
+}
+
+func ToPools(
+	client client.Client,
+	namespace string,
+	poolSpecs []elasticsearchv1beta1.PoolSpec,
+	statsList []scheduler.PoolStats,
+) (res []elasticsearchv1beta1.PoolSpec, err error) {
+	for _, stats := range statsList {
+		spec, inSpec := SpecByName(stats.Name, poolSpecs)
+
+		if inSpec {
+			spec.Replicas = stats.ScheduleReplicas
+			res = append(res, spec)
+		} else {
+			// need load from api fetch
+			found := &elasticsearchv1beta1.Pool{}
+			err = client.Get(context.TODO(), types.NamespacedName{
+				Name:      stats.Name,
+				Namespace: namespace,
+			}, found)
+
+			if err != nil {
+				// may have just been deleted, or another err
+				return nil, err
+			}
+
+			found.Spec.Replicas = stats.ScheduleReplicas
+			res = append(res, found.Spec)
+		}
+
+	}
+	return res, err
 }
