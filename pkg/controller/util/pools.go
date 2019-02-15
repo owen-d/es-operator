@@ -85,6 +85,7 @@ func SpecByName(
 
 func ToPools(
 	client client.Client,
+	clusterName string,
 	namespace string,
 	poolSpecs []elasticsearchv1beta1.PoolSpec,
 	statsList []scheduler.PoolStats,
@@ -99,7 +100,7 @@ func ToPools(
 			// need load from api fetch
 			found := &elasticsearchv1beta1.Pool{}
 			err = client.Get(context.TODO(), types.NamespacedName{
-				Name:      stats.Name,
+				Name:      PoolName(clusterName, stats.Name),
 				Namespace: namespace,
 			}, found)
 

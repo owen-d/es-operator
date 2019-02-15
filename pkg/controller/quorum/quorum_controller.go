@@ -214,6 +214,7 @@ func (r *ReconcileQuorum) ReconcilePools(
 
 	specs, err := util.ToPools(
 		r,
+		clusterName,
 		quorum.Namespace,
 		quorum.Spec.NodePools,
 		stats,

@@ -39,7 +39,7 @@ func ToStats(specs []elasticsearchv1beta1.PoolSpec, metricsList map[string]*elas
 				Desired:  0,
 				Dangling: true,
 				// until overridden, schedule with the number of replicas currently ready.
-				ScheduleReplicas: stats.Ready,
+				ScheduleReplicas: metrics.Ready,
 			}
 		} else {
 			stats.Ready = metrics.Ready
