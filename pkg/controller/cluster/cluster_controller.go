@@ -22,7 +22,9 @@ import (
 	"github.com/owen-d/es-operator/pkg/controller/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -93,7 +95,6 @@ type ReconcileCluster struct {
 
 // Reconcile reads that state of the cluster for a Cluster object and makes changes based on the state read
 // and what is in the Cluster.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
 // a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
 // +kubebuilder:rbac:groups=elasticsearch.k8s.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
@@ -115,6 +116,10 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	if res, err = r.ReconcileStatus(instance); err != nil {
+		return res, err
 	}
 
 	res, err = r.ReconcilePools(instance)
@@ -199,4 +204,50 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 		dronePools,
 		extraLabels,
 	)
+}
+
+func (r *ReconcileCluster) ReconcileStatus(cluster *elasticsearchv1beta1.Cluster) (reconcile.Result, error) {
+	var err error
+	pools := &elasticsearchv1beta1.PoolList{}
+
+	fetchOpts := client.
+		InNamespace(cluster.Namespace).
+		MatchingLabels(map[string]string{
+			util.ClusterLabelKey: cluster.Name,
+		})
+
+	noQuorum, err := labels.NewRequirement(util.QuorumLabelKey, selection.DoesNotExist, nil)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	fetchOpts.LabelSelector = fetchOpts.LabelSelector.Add(*noQuorum)
+
+	err = r.List(context.TODO(), fetchOpts, pools)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	current := make(map[string]elasticsearchv1beta1.PoolSetMetrics)
+	for _, pool := range pools.Items {
+		poolMetrics := elasticsearchv1beta1.PoolSetMetrics{}
+		for _, set := range pool.Status.StatefulSets {
+			poolMetrics.Replicas += set.Replicas
+			poolMetrics.Ready += set.Ready
+		}
+		current[pool.Name] = poolMetrics
+	}
+
+	newStatus := cluster.Status.DeepCopy()
+	newStatus.DronePools = current
+
+	if !reflect.DeepEqual(newStatus, cluster.Status) {
+		cluster.Status = *newStatus
+		if err = r.Status().Update(context.TODO(), cluster); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	return reconcile.Result{}, nil
 }

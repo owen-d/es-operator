@@ -28,5 +28,5 @@ func PoolName(cluster, poolName string) string {
 }
 
 func QuorumName(cluster string) string {
-	return strings.Join([]string{cluster}, "-")
+	return cluster
 }

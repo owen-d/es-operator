@@ -74,7 +74,18 @@ type Persistence struct {
 }
 
 // ClusterStatus defines the observed state of Cluster
-type ClusterStatus struct{}
+type ClusterStatus struct {
+	// Ready maps pool names to the number of alive replicas.
+	// This can include replicas that aren't in the spec (i.e. if a cluster updates and drops a node pool)
+	DronePools map[string]PoolSetMetrics
+}
+
+func (s *ClusterStatus) ReadyReplicas() (ct int32) {
+	for _, stats := range s.DronePools {
+		ct += stats.Ready
+	}
+	return ct
+}
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
