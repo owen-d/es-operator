@@ -59,6 +59,12 @@ spec:
               type: array
           type: object
         status:
+          properties:
+            pools:
+              description: Ready maps pool names to the number of alive replicas.
+                This can include replicas that aren't in the spec (i.e. if a cluster
+                updates and drops a node pool)
+              type: object
           type: object
   version: v1beta1
 status:

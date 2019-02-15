@@ -89,13 +89,19 @@ func ToPools(
 	namespace string,
 	poolSpecs []elasticsearchv1beta1.PoolSpec,
 	statsList []scheduler.PoolStats,
-) (res []elasticsearchv1beta1.PoolSpec, err error) {
+) (res, forDeletion []elasticsearchv1beta1.PoolSpec, err error) {
 	for _, stats := range statsList {
 		spec, inSpec := SpecByName(stats.Name, poolSpecs)
 
 		if inSpec {
 			spec.Replicas = stats.ScheduleReplicas
 			res = append(res, spec)
+		} else if stats.Dangling && stats.ScheduleReplicas == 0 {
+			// is a dangling pool with no replicas; deletable
+			forDeletion = append(forDeletion, elasticsearchv1beta1.PoolSpec{
+				Name: stats.Name,
+			})
+
 		} else {
 			// need load from api fetch
 			found := &elasticsearchv1beta1.Pool{}
@@ -106,7 +112,7 @@ func ToPools(
 
 			if err != nil {
 				// may have just been deleted, or another err
-				return nil, err
+				return nil, nil, err
 			}
 
 			found.Spec.Replicas = stats.ScheduleReplicas
@@ -114,5 +120,32 @@ func ToPools(
 		}
 
 	}
-	return res, err
+	return res, forDeletion, err
+}
+
+func EnsurePoolsDeleted(
+	client client.Client,
+	log logr.Logger,
+	clusterName string,
+	namespace string,
+	specs []elasticsearchv1beta1.PoolSpec,
+) error {
+	var err error
+	for _, spec := range specs {
+		name := PoolName(clusterName, spec.Name)
+
+		pool := &elasticsearchv1beta1.Pool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+		}
+
+		log.Info("Deleting Pool", "namespace", pool.Namespace, "name", pool.Name)
+		err = client.Delete(context.TODO(), pool)
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }

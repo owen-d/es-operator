@@ -212,13 +212,25 @@ func (r *ReconcileQuorum) ReconcilePools(
 		return reconcile.Result{}, err
 	}
 
-	specs, err := util.ToPools(
+	specs, forDeletion, err := util.ToPools(
 		r,
 		clusterName,
 		quorum.Namespace,
 		quorum.Spec.NodePools,
 		stats,
 	)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	err = util.EnsurePoolsDeleted(
+		r,
+		log,
+		clusterName,
+		quorum.Namespace,
+		forDeletion,
+	)
+
 	if err != nil {
 		return reconcile.Result{}, err
 	}
