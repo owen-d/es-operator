@@ -23,7 +23,7 @@ import (
 
 // PoolSpec defines the desired state of Pool
 type PoolSpec struct {
-	Replicas int32  `json:"replicas,omitempty"`
+	Replicas int32  `json:"replicas"`
 	Name     string `json:"name"`
 	// +kubebuilder:validation:Enum=master,data,ingest
 	Roles     []string                `json:"roles,omitempty"`

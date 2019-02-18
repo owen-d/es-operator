@@ -76,17 +76,14 @@ func PoolsForScheduling(
 	xs []PoolStats,
 ) ([]PoolStats, error) {
 	if ready := NumReady(xs); desired > ready {
-		if err := scaleUp(xs); err != nil {
-			return xs, err
-		}
+		err := scaleUp(xs)
+		return xs, err
 	} else if desired < ready {
-		if err := scaleDown(xs); err != nil {
-			return xs, err
-		}
+		err := scaleDown(xs)
+		return xs, err
 	} else if LessThanDesired(xs) {
-		if err := scaleUp(xs); err != nil {
-			return xs, err
-		}
+		err := scaleUp(xs)
+		return xs, err
 	}
 
 	return xs, nil
