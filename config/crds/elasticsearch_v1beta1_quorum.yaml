@@ -54,6 +54,7 @@ spec:
                   storageClass:
                     type: string
                 required:
+                - replicas
                 - name
                 type: object
               type: array

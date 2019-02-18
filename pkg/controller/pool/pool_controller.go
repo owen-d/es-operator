@@ -160,7 +160,7 @@ func (r *ReconcilePool) ReconcileStatus(pool *elasticsearchv1beta1.Pool) (reconc
 
 	newStatus := pool.Status.DeepCopy()
 	newStatus.StatefulSets = current
-	newStatus.MasterEligible = pool.Spec.IsMasterEligible()
+	newStatus.KubectlReplicasAnnotation = newStatus.FormatReplicasAnnotation()
 
 	if !reflect.DeepEqual(newStatus, pool.Status) {
 		pool.Status = *newStatus

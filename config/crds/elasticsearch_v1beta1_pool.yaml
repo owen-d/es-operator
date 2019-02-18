@@ -6,6 +6,12 @@ metadata:
     controller-tools.k8s.io: "1.0"
   name: pools.elasticsearch.k8s.io
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.kubectlReplicasAnnotation
+    description: nodes status for pool
+    format: byte
+    name: ready
+    type: string
   group: elasticsearch.k8s.io
   names:
     kind: Pool
@@ -51,21 +57,21 @@ spec:
             storageClass:
               type: string
           required:
+          - replicas
           - name
           type: object
         status:
           properties:
-            masterEligible:
-              description: this cannot be omitted by the api as we may need to query
-                on false values
-              type: boolean
+            kubectlReplicasAnnotation:
+              description: 'keeps string repr of pools for kubectl formatting. TODO(owen):
+                figure out how to format instead of adding a field that needs to be
+                updated'
+              type: string
             statefulSets:
               description: ReadyReplicas maps statefulset names to the number of alive
                 replicas. This can include statefulsets that aren't in the spec (i.e.
                 if a cluster updates and drops a node pool)
               type: object
-          required:
-          - masterEligible
           type: object
   version: v1beta1
 status:

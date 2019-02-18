@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"fmt"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -56,8 +57,10 @@ type PoolStatus struct {
 	// ReadyReplicas maps statefulset names to the number of alive replicas.
 	// This can include statefulsets that aren't in the spec (i.e. if a cluster updates and drops a node pool)
 	StatefulSets map[string]*PoolSetMetrics `json:"statefulSets,omitempty"`
-	// this cannot be omitted by the api as we may need to query on false values
-	MasterEligible bool `json:"masterEligible"`
+
+	// keeps string repr of pools for kubectl formatting.
+	// TODO(owen): figure out how to format instead of adding a field that needs to be updated
+	KubectlReplicasAnnotation string `json:"kubectlReplicasAnnotation,omitempty"`
 }
 
 type PoolSetMetrics struct {
@@ -73,12 +76,24 @@ func (s *PoolStatus) ReadyReplicas() (ct int32) {
 	return ct
 }
 
+func (s *PoolStatus) Replicas() (ct int32) {
+	for _, stats := range s.StatefulSets {
+		ct += stats.Replicas
+	}
+	return ct
+}
+
+func (s *PoolStatus) FormatReplicasAnnotation() string {
+	return fmt.Sprintf("%d/%d", s.ReadyReplicas(), s.Replicas())
+}
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Pool is the Schema for the pools API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="ready",type="string",JSONPath=".status.kubectlReplicasAnnotation",description="nodes status for pool",format="byte",priority=0
 type Pool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
