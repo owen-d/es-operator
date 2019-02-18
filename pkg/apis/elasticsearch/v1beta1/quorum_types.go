@@ -29,13 +29,6 @@ type QuorumSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
-func (s *QuorumSpec) DesiredReplicas() (ct int32) {
-	for _, pool := range s.NodePools {
-		ct += pool.Replicas
-	}
-	return ct
-}
-
 // QuorumStatus defines the observed state of Quorum
 type QuorumStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster

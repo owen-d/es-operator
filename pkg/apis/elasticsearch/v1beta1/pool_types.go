@@ -102,6 +102,13 @@ type Pool struct {
 	Status PoolStatus `json:"status,omitempty"`
 }
 
+func DesiredReplicas(specs []PoolSpec) (ct int32) {
+	for _, pool := range specs {
+		ct += pool.Replicas
+	}
+	return ct
+}
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // PoolList contains a list of Pool

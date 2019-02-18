@@ -194,6 +194,33 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 		util.ClusterLabelKey: cluster.Name,
 	}
 
+	desired := elasticsearchv1beta1.DesiredReplicas(dronePools)
+
+	specs, forDeletion, err := util.ResolvePools(
+		r,
+		cluster.Name,
+		cluster.Namespace,
+		dronePools,
+		cluster.Status.DronePools,
+		desired,
+	)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	err = util.EnsurePoolsDeleted(
+		r,
+		log,
+		cluster.Name,
+		cluster.Namespace,
+		forDeletion,
+	)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return util.ReconcilePools(
 		r,
 		r.scheme,
@@ -201,7 +228,7 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 		cluster,
 		cluster.Name,
 		cluster.Namespace,
-		dronePools,
+		specs,
 		extraLabels,
 	)
 }

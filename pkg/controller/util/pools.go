@@ -83,6 +83,7 @@ func SpecByName(
 	return res, false
 }
 
+// ToPools will merge a list of PoolSpecs and PoolStats, fetching from the api if necessary
 func ToPools(
 	client client.Client,
 	clusterName string,
@@ -148,4 +149,41 @@ func EnsurePoolsDeleted(
 		}
 	}
 	return nil
+}
+
+// ResolvePools will determine what the desired replica counts are as well as any possible unpruned pool deletions.
+func ResolvePools(
+	client client.Client,
+	clusterName string,
+	namespace string,
+	specs []elasticsearchv1beta1.PoolSpec,
+	metrics map[string]*elasticsearchv1beta1.PoolSetMetrics,
+	desired int32,
+) (
+	[]elasticsearchv1beta1.PoolSpec,
+	[]elasticsearchv1beta1.PoolSpec,
+	error,
+) {
+	stats, err := scheduler.PoolsForScheduling(
+		desired,
+		scheduler.ToStats(specs, metrics),
+	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res, forDeletion, err := ToPools(
+		client,
+		clusterName,
+		namespace,
+		specs,
+		stats,
+	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return res, forDeletion, nil
 }

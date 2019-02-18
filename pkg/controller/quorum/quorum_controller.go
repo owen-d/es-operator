@@ -20,7 +20,6 @@ import (
 	"context"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
-	"github.com/owen-d/es-operator/pkg/controller/util/scheduler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"reflect"
@@ -112,7 +111,7 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 	//    and bring the cluster to a red state
 	// */
 	var ready, desired, newQuorum int32
-	if ready, desired = instance.Status.ReadyReplicas(), instance.Spec.DesiredReplicas(); desired < ready {
+	if ready, desired = instance.Status.ReadyReplicas(), elasticsearchv1beta1.DesiredReplicas(instance.Spec.NodePools); desired < ready {
 		newQuorum = util.ComputeQuorum(ready - 1)
 	} else {
 		newQuorum = util.ComputeQuorum(ready)
@@ -201,24 +200,15 @@ func (r *ReconcileQuorum) ReconcilePools(
 		util.ClusterLabelKey: clusterName,
 	}
 
-	stats, err := scheduler.PoolsForScheduling(
-		desired,
-		scheduler.ToStats(
-			quorum.Spec.NodePools,
-			quorum.Status.Pools,
-		),
-	)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	specs, forDeletion, err := util.ToPools(
+	specs, forDeletion, err := util.ResolvePools(
 		r,
 		clusterName,
 		quorum.Namespace,
 		quorum.Spec.NodePools,
-		stats,
+		quorum.Status.Pools,
+		desired,
 	)
+
 	if err != nil {
 		return reconcile.Result{}, err
 	}
