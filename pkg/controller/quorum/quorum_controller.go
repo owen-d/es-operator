@@ -28,6 +28,7 @@ import (
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -316,6 +317,10 @@ func (r *ReconcileQuorum) ReconcileDiscoveryService(quorum *elasticsearchv1beta1
 			},
 			Selector: labels,
 		},
+	}
+
+	if err := controllerutil.SetControllerReference(quorum, svc, r.scheme); err != nil {
+		return reconcile.Result{}, err
 	}
 
 	found := &corev1.Service{}

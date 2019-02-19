@@ -42,7 +42,7 @@ type PoolSpec struct {
 
 func (s *PoolSpec) IsMasterEligible() bool {
 	for _, role := range s.Roles {
-		if role == masterRole {
+		if role == MasterRole {
 			return true
 		}
 	}

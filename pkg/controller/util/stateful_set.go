@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"fmt"
 	logr "github.com/go-logr/logr"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,6 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
+
+const (
+	dataVolumeMountPath   = "/usr/share/elasticsearch/data"
+	configVolumeMountPath = "/usr/share/elasticsearch/config"
 )
 
 func ReconcileStatefulSet(
@@ -51,6 +57,8 @@ func ReconcileStatefulSet(
 	statefulLabels := map[string]string{StatefulSetKey: name}
 	podLabels := MergeMaps(statefulLabels, extraLabels)
 
+	podEnv := mkEnv(clusterName, pool)
+
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -81,6 +89,39 @@ func ReconcileStatefulSet(
 									},
 								},
 							},
+							ReadinessProbe: &corev1.Probe{
+								InitialDelaySeconds: 3,
+								Handler: corev1.Handler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"true"},
+									},
+								},
+							},
+							Env: podEnv,
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      DataVolumeNameTemplate(clusterName, pool.Name),
+									MountPath: dataVolumeMountPath,
+									ReadOnly:  false,
+								},
+								{
+									Name:      QuorumConfigMapName(clusterName),
+									MountPath: configVolumeMountPath,
+									ReadOnly:  true,
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: QuorumConfigMapName(clusterName),
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: QuorumConfigMapName(clusterName),
+									},
+								},
+							},
 						},
 					},
 				},
@@ -88,13 +129,13 @@ func ReconcileStatefulSet(
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 				corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: VolumeNameTemplate(clusterName),
+						Name: DataVolumeNameTemplate(clusterName, pool.Name),
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceStorage: resource.MustParse("256Mi"),
+								corev1.ResourceStorage: resource.MustParse("512Mi"),
 							},
 						},
 						StorageClassName: storageClass,
@@ -192,4 +233,34 @@ func ReconcileHeadlessServiceForStatefulSet(
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func mkEnv(clusterName string, pool elasticsearchv1beta1.PoolSpec) []corev1.EnvVar {
+	podEnv := []corev1.EnvVar{
+		corev1.EnvVar{
+			Name: "POD_NAME",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.name",
+				},
+			},
+		},
+		corev1.EnvVar{
+			Name:  "NODE_MASTER",
+			Value: fmt.Sprintf("%t", StringIn(elasticsearchv1beta1.MasterRole, pool.Roles...)),
+		},
+		corev1.EnvVar{
+			Name:  "NODE_DATA",
+			Value: fmt.Sprintf("%t", StringIn(elasticsearchv1beta1.DataRole, pool.Roles...)),
+		},
+		corev1.EnvVar{
+			Name:  "NODE_INGEST",
+			Value: fmt.Sprintf("%t", StringIn(elasticsearchv1beta1.IngestRole, pool.Roles...)),
+		},
+		corev1.EnvVar{
+			Name:  "DISCOVERY_URL",
+			Value: "http://" + MasterDiscoveryServiceName(clusterName) + ":9200",
+		},
+	}
+	return podEnv
 }

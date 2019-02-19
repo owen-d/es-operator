@@ -30,7 +30,7 @@ func QuorumConfigMap(
 ) (*corev1.ConfigMap, error) {
 	cMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ConfigMapName(clusterName),
+			Name:      QuorumConfigMapName(clusterName),
 			Namespace: namespace,
 		},
 		Data: map[string]string{

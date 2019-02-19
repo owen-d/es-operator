@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	masterRole = "master"
-	dataRole   = "data"
-	ingestRole = "ingest"
+	MasterRole = "master"
+	DataRole   = "data"
+	IngestRole = "ingest"
 )
 
 // +genclient
@@ -50,14 +50,8 @@ type ClusterSpec struct {
 
 func (c *ClusterSpec) Pools() (masterPools, dronePools []PoolSpec) {
 	for _, pool := range c.NodePools {
-		var eligible bool
-		for _, role := range pool.Roles {
-			if role == masterRole {
-				eligible = true
-			}
-		}
 
-		if eligible {
+		if pool.IsMasterEligible() {
 			masterPools = append(masterPools, pool)
 		} else {
 			dronePools = append(dronePools, pool)
