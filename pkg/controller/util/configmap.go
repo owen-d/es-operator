@@ -21,22 +21,18 @@ discovery:
 xpack.security.enabled: false
 `
 
-func esConfigConfigMap(
+func QuorumConfigMap(
 	clusterName string,
 	namespace string,
-	minMasters int,
-	conf string,
+	minMasters int32,
 	owner metav1.Object,
 	scheme *runtime.Scheme,
-	extraLabels map[string]string,
 ) (*corev1.ConfigMap, error) {
 	cMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConfigMapName(clusterName),
 			Namespace: namespace,
-			Labels:    extraLabels,
 		},
-		// TODO: move the environment variable names into a general purpose package
 		Data: map[string]string{
 			"elasticsearch.yml": generateConfig(minMasters),
 		},
@@ -51,6 +47,6 @@ func esConfigConfigMap(
 	return cMap, nil
 }
 
-func generateConfig(minMasters int) string {
+func generateConfig(minMasters int32) string {
 	return fmt.Sprintf(configTemplate, minMasters)
 }

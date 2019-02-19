@@ -145,8 +145,55 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 // ReconcileMinMasters first updates the configmap that is responsible for setting min_masters
 // and then pings the elasticsearch api to set it dynamically on already-provisioned nodes,
 // avoiding an otherwise necessary restart.
-// TODO(owen): implement
+// TODO(owen): implement pinging functionality
 func (r *ReconcileQuorum) ReconcileMinMasters(quorum *elasticsearchv1beta1.Quorum, minMasters int32) (reconcile.Result, error) {
+	res, err := r.ReconcileConfigMap(quorum, minMasters)
+	if err != nil {
+		return res, err
+	}
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileQuorum) ReconcileConfigMap(quorum *elasticsearchv1beta1.Quorum, minMasters int32) (reconcile.Result, error) {
+	clusterName, err := util.ExtractKey(quorum.Labels, util.ClusterLabelKey)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	cMap, err := util.QuorumConfigMap(
+		clusterName,
+		quorum.Namespace,
+		minMasters,
+		quorum,
+		r.scheme,
+	)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	found := &corev1.ConfigMap{}
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      cMap.Name,
+		Namespace: cMap.Namespace,
+	}, found)
+
+	if err != nil && errors.IsNotFound(err) {
+		log.Info("Creating ConfigMap", "namespace", cMap.Namespace, "name", cMap.Name)
+		err = r.Create(context.TODO(), cMap)
+		return reconcile.Result{}, err
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if !reflect.DeepEqual(cMap.Data, found.Data) {
+		found.Data = cMap.Data
+		log.Info("Updating ConfigMap", "namespace", cMap.Namespace, "name", cMap.Name)
+
+		err = r.Update(context.TODO(), found)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 	return reconcile.Result{}, nil
 }
 
