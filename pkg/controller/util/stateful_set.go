@@ -48,6 +48,9 @@ func ReconcileStatefulSet(
 		storageClass = &pool.StorageClass
 	}
 
+	statefulLabels := map[string]string{StatefulSetKey: name}
+	podLabels := MergeMaps(statefulLabels, extraLabels)
+
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -58,11 +61,11 @@ func ReconcileStatefulSet(
 			Replicas:    &pool.Replicas,
 			ServiceName: StatefulSetService(clusterName, pool.Name),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{StatefulSetKey: name},
+				MatchLabels: statefulLabels,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{StatefulSetKey: name},
+					Labels: podLabels,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{

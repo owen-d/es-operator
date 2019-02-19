@@ -20,8 +20,11 @@ import (
 	"context"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -101,6 +104,10 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 		return reconcile.Result{}, err
 	}
 
+	if res, err := r.ReconcileDiscoveryService(instance); err != nil {
+		return res, err
+	}
+
 	if res, err = r.ReconcileStatus(instance); err != nil {
 		return res, err
 	}
@@ -133,7 +140,6 @@ func (r *ReconcileQuorum) Reconcile(request reconcile.Request) (res reconcile.Re
 	}
 
 	return reconcile.Result{}, nil
-
 }
 
 // ReconcileMinMasters first updates the configmap that is responsible for setting min_masters
@@ -147,13 +153,17 @@ func (r *ReconcileQuorum) ReconcileMinMasters(quorum *elasticsearchv1beta1.Quoru
 func (r *ReconcileQuorum) ReconcileStatus(quorum *elasticsearchv1beta1.Quorum) (reconcile.Result, error) {
 	var err error
 	pools := &elasticsearchv1beta1.PoolList{}
+	clusterName, err := util.ExtractKey(quorum.Labels, util.ClusterLabelKey)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	labels := util.QuorumLabels(clusterName, quorum.Name)
 
 	err = r.List(context.TODO(),
 		client.
 			InNamespace(quorum.Namespace).
-			MatchingLabels(map[string]string{
-				util.QuorumLabelKey: quorum.Name,
-			}),
+			MatchingLabels(labels),
 		pools)
 
 	if err != nil {
@@ -195,10 +205,8 @@ func (r *ReconcileQuorum) ReconcilePools(
 		return reconcile.Result{}, err
 	}
 
-	extraLabels := map[string]string{
-		util.QuorumLabelKey:  quorum.Name,
-		util.ClusterLabelKey: clusterName,
-	}
+	labels := util.QuorumLabels(clusterName, quorum.Name)
+	log.Info("generated labels", "labels", labels, "targetQuorum", quorum.Name)
 
 	specs, forDeletion, err := util.ResolvePools(
 		r,
@@ -233,6 +241,59 @@ func (r *ReconcileQuorum) ReconcilePools(
 		clusterName,
 		quorum.Namespace,
 		specs,
-		extraLabels,
+		labels,
 	)
+}
+
+func (r *ReconcileQuorum) ReconcileDiscoveryService(quorum *elasticsearchv1beta1.Quorum) (
+	reconcile.Result,
+	error,
+) {
+	clusterName, err := util.ExtractKey(quorum.Labels, util.ClusterLabelKey)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	labels := util.QuorumLabels(clusterName, quorum.Name)
+
+	name := util.MasterDiscoveryServiceName(clusterName)
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: quorum.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Ports: []corev1.ServicePort{
+				corev1.ServicePort{Port: 9300},
+			},
+			Selector: labels,
+		},
+	}
+
+	found := &corev1.Service{}
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      svc.Name,
+		Namespace: svc.Namespace,
+	}, found)
+
+	if err != nil && errors.IsNotFound(err) {
+		log.Info("Creating Service", "namespace", svc.Namespace, "name", svc.Name)
+		err = r.Create(context.TODO(), svc)
+		return reconcile.Result{}, err
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if !reflect.DeepEqual(svc.Spec, found.Spec) {
+		found.Spec = svc.Spec
+		log.Info("Updating Svc", "namespace", svc.Namespace, "name", svc.Name)
+
+		err = r.Update(context.TODO(), found)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	return reconcile.Result{}, nil
 }

@@ -30,3 +30,20 @@ func PoolName(cluster, poolName string) string {
 func QuorumName(cluster string) string {
 	return cluster
 }
+
+// ConfigMapName refers to the default configmap used by all nodes (contains minMasters & discovery)
+func ConfigMapName(cluster string) string {
+	return strings.Join([]string{cluster, "quorum"}, "-")
+}
+
+func MasterDiscoveryServiceName(cluster string) string {
+	return strings.Join([]string{cluster, "master", "discovery"}, "-")
+
+}
+
+func QuorumLabels(clusterName, quorumName string) map[string]string {
+	return map[string]string{
+		QuorumLabelKey:  quorumName,
+		ClusterLabelKey: clusterName,
+	}
+}

@@ -120,7 +120,17 @@ func (r *ReconcilePool) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	extraLabels := map[string]string{util.PoolLabelKey: instance.Name}
+
+	extraLabels := map[string]string{
+		util.ClusterLabelKey: clusterName,
+		util.PoolLabelKey:    instance.Name,
+	}
+
+	// adds quorum label to resulting statefulsets if exists (i.e. for master discovery svc)
+	if quorumName, err := util.ExtractKey(instance.Labels, util.QuorumLabelKey); err == nil {
+		log.Info("adding label", util.QuorumLabelKey, quorumName, "targetPool", instance.Name)
+		extraLabels[util.QuorumLabelKey] = quorumName
+	}
 
 	return util.ReconcileStatefulSet(
 		r,
