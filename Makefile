@@ -5,7 +5,7 @@ IMG ?= controller:latest
 all: test manager
 
 ping:
-	curl $$(minikube ip):$$(kubectl get svc mycluster -o jsonpath='{.spec.ports[0].nodePort}')
+	curl $$(minikube ip):$$(kubectl get svc mycluster -o jsonpath='{.spec.ports[0].nodePort}')/_cluster/health | jq '.'
 
 clean-pvc:
 	kubectl get pvc | tail -n +2 | awk '{print $$1}' | xargs -n 1 kubectl delete pvc

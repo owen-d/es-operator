@@ -9,6 +9,7 @@ import (
 )
 
 const configTemplate = `
+cluster.name: %s
 node.name: ${POD_NAME}
 node.master: ${NODE_MASTER}
 node.data: ${NODE_DATA}
@@ -34,7 +35,7 @@ func QuorumConfigMap(
 			Namespace: namespace,
 		},
 		Data: map[string]string{
-			"elasticsearch.yml": generateConfig(minMasters),
+			"elasticsearch.yml": generateConfig(clusterName, minMasters),
 		},
 	}
 
@@ -47,6 +48,6 @@ func QuorumConfigMap(
 	return cMap, nil
 }
 
-func generateConfig(minMasters int32) string {
-	return fmt.Sprintf(configTemplate, minMasters)
+func generateConfig(clusterName string, minMasters int32) string {
+	return fmt.Sprintf(configTemplate, clusterName, minMasters)
 }
