@@ -20,6 +20,7 @@ import (
 	"context"
 	elasticsearchv1beta1 "github.com/owen-d/es-operator/pkg/apis/elasticsearch/v1beta1"
 	"github.com/owen-d/es-operator/pkg/controller/util"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -122,13 +123,15 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (res reconcile.R
 		return res, err
 	}
 
-	res, err = r.ReconcilePools(instance)
-	if err != nil {
+	if res, err = r.ReconcileService(instance); err != nil {
 		return res, err
 	}
 
-	res, err = r.ReconcileQuorum(instance)
-	if err != nil {
+	if res, err := r.ReconcilePools(instance); err != nil {
+		return res, err
+	}
+
+	if res, err = r.ReconcileQuorum(instance); err != nil {
 		return res, err
 	}
 
@@ -274,6 +277,62 @@ func (r *ReconcileCluster) ReconcileStatus(cluster *elasticsearchv1beta1.Cluster
 	if !reflect.DeepEqual(newStatus, cluster.Status) {
 		cluster.Status = *newStatus
 		if err = r.Status().Update(context.TODO(), cluster); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	return reconcile.Result{}, nil
+}
+
+// TODO: implement ingest, coordinator endpoints as well
+func (r *ReconcileCluster) ReconcileService(cluster *elasticsearchv1beta1.Cluster) (
+	reconcile.Result,
+	error,
+) {
+	var err error
+
+	name := util.ClusterServiceName(cluster.Name)
+	labels := map[string]string{
+		util.ClusterLabelKey: cluster.Name,
+	}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: cluster.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeNodePort,
+			Ports: []corev1.ServicePort{
+				corev1.ServicePort{Port: 9200},
+			},
+			Selector: labels,
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(cluster, svc, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	found := &corev1.Service{}
+	err = r.Get(context.TODO(), types.NamespacedName{
+		Name:      svc.Name,
+		Namespace: svc.Namespace,
+	}, found)
+
+	if err != nil && errors.IsNotFound(err) {
+		log.Info("Creating Service", "namespace", svc.Namespace, "name", svc.Name)
+		err = r.Create(context.TODO(), svc)
+		return reconcile.Result{}, err
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if !reflect.DeepEqual(svc.Spec, found.Spec) {
+		found.Spec = svc.Spec
+		log.Info("Updating Svc", "namespace", svc.Namespace, "name", svc.Name)
+
+		err = r.Update(context.TODO(), found)
+		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}

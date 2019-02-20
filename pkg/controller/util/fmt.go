@@ -35,7 +35,11 @@ func QuorumConfigMapName(cluster string) string {
 
 func MasterDiscoveryServiceName(cluster string) string {
 	return strings.Join([]string{cluster, "master", "discovery"}, "-")
+}
 
+// ClusterServiceName is the default service used for a cluster and includes all pods
+func ClusterServiceName(cluster string) string {
+	return cluster
 }
 
 func QuorumLabels(clusterName, quorumName string) map[string]string {

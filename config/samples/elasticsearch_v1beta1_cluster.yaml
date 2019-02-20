@@ -3,42 +3,35 @@ kind: Cluster
 metadata:
   labels:
     controller-tools.k8s.io: "1.0"
-  name: cluster-sample
+  name: mycluster
 spec:
   # Add fields here
   nodePools:
     - name: master
       roles:
         - master
+        - data
       replicas: 1
       storageClass: "standard"
       resources:
         requests:
-          memory: "64Mi"
-          cpu: "50m"
-    - name: master-2
-      roles:
-        - master
-      replicas: 4
-      storageClass: "standard"
-      resources:
-        requests:
-          memory: "64Mi"
-          cpu: "50m"
-    - name: data
-      roles:
-        - data
-        - ingest
-      replicas: 2
-      storageClass: "standard"
-      resources:
-        requests:
-          memory: "64Mi"
-          cpu: "50m"
-    - name: ingest
-      replicas: 0
-      storageClass: "standard"
-      resources:
-        requests:
-          memory: "64Mi"
-          cpu: "50m"
+          memory: "1Gi"
+          cpu: "500m"
+    # - name: data
+    #   roles:
+    #     - data
+    #   replicas: 2
+    #   storageClass: "standard"
+    #   resources:
+    #     requests:
+    #       memory: "64Mi"
+    #       cpu: "50m"
+    # - name: ingest
+    #   roles:
+    #     - ingest
+    #   replicas: 0
+    #   storageClass: "standard"
+    #   resources:
+    #     requests:
+    #       memory: "64Mi"
+    #       cpu: "50m"
