@@ -204,7 +204,8 @@ func ReconcileHeadlessServiceForStatefulSet(
 			Namespace: namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			ClusterIP: corev1.ClusterIPNone,
+			ClusterIP:                corev1.ClusterIPNone,
+			PublishNotReadyAddresses: true,
 			Ports: []corev1.ServicePort{
 				corev1.ServicePort{Port: 9200},
 			},
