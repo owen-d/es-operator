@@ -20,8 +20,15 @@ import (
 
 const (
 	dataVolumeMountPath   = "/usr/share/elasticsearch/data"
-	configVolumeMountPath = "/usr/share/elasticsearch/config"
+	configVolumeMountPath = "/usr/share/elasticsearch/config/elasticsearch.yml"
+	elasticConfigFile     = "elasticsearch.yml"
+	esImage               = "docker.elastic.co/elasticsearch/elasticsearch"
+	esTag                 = "6.6.0"
+	maxMapCount           = 262144
 )
+
+// GroupID for the elasticsearch user. The official elastic docker images always have the id of 1000
+var esFsGroup int64 = 1000
 
 func ReconcileStatefulSet(
 	client client.Client,
@@ -76,10 +83,14 @@ func ReconcileStatefulSet(
 					Labels: podLabels,
 				},
 				Spec: corev1.PodSpec{
+					SecurityContext: &corev1.PodSecurityContext{
+						FSGroup: &esFsGroup,
+					},
+					InitContainers: mkInitContainers(CatImage(esImage, esTag), maxMapCount),
 					Containers: []corev1.Container{
 						{
-							Name:      "nginx",
-							Image:     "nginx",
+							Name:      "elasticsearch",
+							Image:     CatImage(esImage, esTag),
 							Resources: pool.Resources,
 							LivenessProbe: &corev1.Probe{
 								InitialDelaySeconds: 10,
@@ -107,6 +118,7 @@ func ReconcileStatefulSet(
 								{
 									Name:      QuorumConfigMapName(clusterName),
 									MountPath: configVolumeMountPath,
+									SubPath:   elasticConfigFile,
 									ReadOnly:  true,
 								},
 							},
@@ -263,4 +275,30 @@ func mkEnv(clusterName string, pool elasticsearchv1beta1.PoolSpec) []corev1.EnvV
 		},
 	}
 	return podEnv
+}
+
+func mkInitContainers(image string, maxMapCount int) []corev1.Container {
+	var user int64 = 0
+	privileged := true
+
+	reqs := corev1.ResourceList{
+		corev1.ResourceCPU:    resource.MustParse("25m"),
+		corev1.ResourceMemory: resource.MustParse("128Mi"),
+	}
+
+	return []corev1.Container{
+		{
+			Name: "sysctl-conf",
+			SecurityContext: &corev1.SecurityContext{
+				RunAsUser:  &user,
+				Privileged: &privileged,
+			},
+			Image:   image,
+			Command: []string{"sysctl", "-w", fmt.Sprintf("vm.max_map_count=%d", maxMapCount)},
+			Resources: corev1.ResourceRequirements{
+				Requests: reqs,
+				Limits:   reqs,
+			},
+		},
+	}
 }

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -69,4 +70,8 @@ func StringIn(s string, xs ...string) bool {
 		}
 	}
 	return false
+}
+
+func CatImage(image, tag string) string {
+	return fmt.Sprintf("%s:%s", image, tag)
 }
