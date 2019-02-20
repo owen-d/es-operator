@@ -64,7 +64,7 @@ func ReconcileStatefulSet(
 	statefulLabels := map[string]string{StatefulSetKey: name}
 	podLabels := MergeMaps(statefulLabels, extraLabels)
 
-	podEnv := mkEnv(clusterName, pool)
+	podEnv := mkEnv(clusterName, namespace, pool)
 
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -248,7 +248,7 @@ func ReconcileHeadlessServiceForStatefulSet(
 	return reconcile.Result{}, nil
 }
 
-func mkEnv(clusterName string, pool elasticsearchv1beta1.PoolSpec) []corev1.EnvVar {
+func mkEnv(clusterName string, namespace string, pool elasticsearchv1beta1.PoolSpec) []corev1.EnvVar {
 	podEnv := []corev1.EnvVar{
 		corev1.EnvVar{
 			Name: "POD_NAME",
@@ -272,7 +272,7 @@ func mkEnv(clusterName string, pool elasticsearchv1beta1.PoolSpec) []corev1.EnvV
 		},
 		corev1.EnvVar{
 			Name:  "DISCOVERY_URL",
-			Value: "http://" + MasterDiscoveryServiceName(clusterName) + ":9200",
+			Value: DiscoveryServiceDNS(clusterName, namespace),
 		},
 	}
 	return podEnv

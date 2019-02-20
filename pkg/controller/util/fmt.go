@@ -79,3 +79,13 @@ func StringIn(s string, xs ...string) bool {
 func CatImage(image, tag string) string {
 	return fmt.Sprintf("%s:%s", image, tag)
 }
+
+func DiscoveryServiceDNS(clusterName, nameSpace string) string {
+	return strings.Join([]string{
+		MasterDiscoveryServiceName(clusterName),
+		nameSpace,
+		"svc",
+		"cluster",
+		"local",
+	}, ".")
+}

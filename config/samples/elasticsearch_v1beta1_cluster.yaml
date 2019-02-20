@@ -11,7 +11,7 @@ spec:
       roles:
         - master
         - data
-      replicas: 1
+      replicas: 2
       storageClass: "standard"
       resources:
         requests:
