@@ -325,6 +325,10 @@ func (r *ReconcileCluster) ReconcileService(cluster *elasticsearchv1beta1.Cluste
 		return reconcile.Result{}, err
 	} else if err != nil {
 		return reconcile.Result{}, err
+	} else {
+		// Since we do not specify a clusterIP, it is automatically assigned.
+		// Therefore we don't want to try to update this immutable field, so align them
+		svc.Spec.ClusterIP = found.Spec.ClusterIP
 	}
 
 	if !reflect.DeepEqual(svc.Spec, found.Spec) {
