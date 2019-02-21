@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"path/filepath"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -24,6 +25,8 @@ const (
 	elasticConfigFile     = "elasticsearch.yml"
 	esImage               = "docker.elastic.co/elasticsearch/elasticsearch"
 	esTag                 = "6.6.0"
+	reloaderImage         = "owend/es-sidecar"
+	reloaderTag           = "latest"
 	maxMapCount           = 262144
 )
 
@@ -123,6 +126,14 @@ func ReconcileStatefulSet(
 								},
 							},
 						},
+						mkReloader(
+							QuorumConfigMapName(clusterName),
+							// TODO: confirm
+							// mount entire configmap as there's unusual behavior (not notifying)
+							// when mounting just single files
+							filepath.Dir(configVolumeMountPath),
+							configVolumeMountPath,
+						),
 					},
 					Volumes: []corev1.Volume{
 						{
@@ -299,6 +310,30 @@ func mkInitContainers(image string, maxMapCount int) []corev1.Container {
 			Resources: corev1.ResourceRequirements{
 				Requests: reqs,
 				Limits:   reqs,
+			},
+		},
+	}
+}
+
+func mkReloader(configMapName, mountPath, configFile string) corev1.Container {
+	reqs := corev1.ResourceList{
+		corev1.ResourceCPU:    resource.MustParse("25m"),
+		corev1.ResourceMemory: resource.MustParse("64Mi"),
+	}
+
+	return corev1.Container{
+		Name:  "reloader",
+		Image: CatImage(reloaderImage, reloaderTag),
+		Args:  []string{"-v", "-c", configFile},
+		Resources: corev1.ResourceRequirements{
+			Requests: reqs,
+			Limits:   reqs,
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      configMapName,
+				MountPath: mountPath,
+				ReadOnly:  true,
 			},
 		},
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/yaml.v2"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -43,28 +44,41 @@ func main() {
 	if opts.ConfigFile == "" {
 		bail(errors.New("no config-file specified"))
 	}
-	log("successfully parsed arguments")
+	log(fmt.Sprintf("%s: %+v", "successfully parsed arguments", opts))
 
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		bail(err)
 	}
+	defer w.Close()
 
 	if err = w.Add(opts.ConfigFile); err != nil {
 		bail(err)
 	}
 
+	log("awaiting events")
 	for {
 		select {
 		case err = <-w.Errors:
 			bail(err)
 		case event := <-w.Events:
 			log("found event:", event)
-			if event.Op == fsnotify.Create ||
-				event.Op == fsnotify.Rename ||
-				event.Op == fsnotify.Write ||
-				event.Op == fsnotify.Remove {
+			// k8s configmaps uses symlinks, we need this workaround.
+			// original configmap file is removed
+			if event.Op == fsnotify.Remove {
+				// remove the watcher since the file is removed
+				w.Remove(event.Name)
+				// add a new watcher pointing to the new symlink/file
+				if err = w.Add(event.Name); err != nil {
+					panic(err)
+				}
+				if err = reload(opts); err != nil {
+					log(err)
+				}
+			}
 
+			// also allow normal files to be modified and reloaded.
+			if event.Op == fsnotify.Write {
 				if err = reload(opts); err != nil {
 					log(err)
 				}
@@ -92,7 +106,12 @@ func reload(opts Options) error {
 	body := ioutil.NopCloser(bytes.NewReader([]byte(settings)))
 
 	log("updating elastic with new minimum_masters", conf.Discovery.Zen.MininumMasterNodes)
-	resp, err := client.Post("http://localhost:9200/_cluster/settings", "application/json", body)
+	resp, err := Put(
+		client,
+		"http://localhost:9200/_cluster/settings",
+		"application/json",
+		body,
+	)
 	if err != nil {
 		return err
 	}
@@ -103,6 +122,15 @@ func reload(opts Options) error {
 	log("successfully updated elastic with new minimum_masters:", conf.Discovery.Zen.MininumMasterNodes)
 
 	return nil
+}
+
+func Put(c *http.Client, url string, contentType string, body io.ReadCloser) (*http.Response, error) {
+	req, err := http.NewRequest("PUT", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	return c.Do(req)
 }
 
 func bail(err error) {
