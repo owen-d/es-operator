@@ -3,19 +3,25 @@ package main
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
+	"github.com/jessevdk/go-flags"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"time"
 )
 
 var (
-	configFile string
-	client     *http.Client = http.DefaultClient
+	client *http.Client = http.DefaultClient
+	opts   Options
 )
+
+type Options struct {
+	Verbose    bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
+	ConfigFile string `short:"c" long:"config-file" required:"true" description:"path to elasticsearch.yml"`
+}
 
 const settingsTpl = `
 {
@@ -34,39 +40,42 @@ type Config struct {
 }
 
 func main() {
-	if configFile == "" {
-		panic("no configFile specified")
+	if opts.ConfigFile == "" {
+		bail(errors.New("no config-file specified"))
 	}
+	log("successfully parsed arguments")
 
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		panic(err)
+		bail(err)
 	}
 
-	if err = w.Add(configFile); err != nil {
-		panic(err)
+	if err = w.Add(opts.ConfigFile); err != nil {
+		bail(err)
 	}
 
 	for {
 		select {
 		case err = <-w.Errors:
-			panic(err)
+			bail(err)
 		case event := <-w.Events:
+			log("found event:", event)
 			if event.Op == fsnotify.Create ||
+				event.Op == fsnotify.Rename ||
 				event.Op == fsnotify.Write ||
 				event.Op == fsnotify.Remove {
 
-				if err = reload(); err != nil {
-					panic(err)
+				if err = reload(opts); err != nil {
+					log(err)
 				}
 			}
 		}
 	}
 }
 
-func reload() error {
+func reload(opts Options) error {
 	var conf Config
-	b, err := ioutil.ReadFile(configFile)
+	b, err := ioutil.ReadFile(opts.ConfigFile)
 	if err != nil {
 		return err
 	}
@@ -82,16 +91,36 @@ func reload() error {
 	settings := fmt.Sprintf(settingsTpl, conf.Discovery.Zen.MininumMasterNodes)
 	body := ioutil.NopCloser(bytes.NewReader([]byte(settings)))
 
-	resp, err := client.Post("localhost:9200/_cluster/settings", "application/json", body)
+	log("updating elastic with new minimum_masters", conf.Discovery.Zen.MininumMasterNodes)
+	resp, err := client.Post("http://localhost:9200/_cluster/settings", "application/json", body)
+	if err != nil {
+		return err
+	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return errors.New(fmt.Sprint("bad status:", resp.StatusCode, "body:", string(body)))
 	}
+	log("successfully updated elastic with new minimum_masters:", conf.Discovery.Zen.MininumMasterNodes)
 
 	return nil
 }
 
+func bail(err error) {
+	fmt.Fprint(os.Stderr, err, "\n")
+	os.Exit(1)
+}
+
+func log(args ...interface{}) {
+	if !opts.Verbose {
+		return
+	}
+	fmt.Println(args...)
+}
+
 func init() {
-	flag.StringVar(&configFile, "configFile", "", "config file to watch")
+	_, err := flags.ParseArgs(&opts, os.Args)
+	if err != nil {
+		os.Exit(1)
+	}
 	client.Timeout = time.Second * 3
 }

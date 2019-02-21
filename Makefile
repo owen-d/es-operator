@@ -1,6 +1,7 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= owend/es-controller:latest
+SIDECAR_IMG ?= owend/es-sidecar:latest
 
 all: test manager
 
@@ -20,6 +21,9 @@ test: generate fmt vet manifests
 # Build manager binary
 manager: generate fmt vet
 	go build -o bin/manager github.com/owen-d/es-operator/cmd/manager
+
+sidecar:
+	go build -o bin/reloader github.com/owen-d/es-operator/cmd/reloader
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet
@@ -54,11 +58,13 @@ endif
 	go generate ./pkg/... ./cmd/...
 
 # Build the docker image
-docker-build: test
-	docker build . -t ${IMG}
+docker-build:
+	docker build . -t ${IMG} -f controller.Dockerfile
 	@echo "updating kustomize image patch file for manager resource"
-	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' ./config/default/manager_image_patch.yaml
+	sed -i'' 's@image: .*@image: '"${IMG}"'@' ./config/default/manager_image_patch.yaml
+	docker build . -t ${SIDECAR_IMG} -f sidecar.Dockerfile
 
 # Push the docker image
 docker-push:
 	docker push ${IMG}
+	docker push ${SIDECAR_IMG}
