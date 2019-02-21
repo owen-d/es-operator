@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
 	"github.com/jessevdk/go-flags"
+	"gopkg.in/fsnotify.v1"
 	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -56,6 +57,12 @@ func main() {
 		bail(err)
 	}
 
+	lastLocation, err := filepath.EvalSymlinks(opts.ConfigFile)
+	if err != nil {
+		bail(err)
+	}
+	log("resolved:", lastLocation)
+
 	log("awaiting events")
 	for {
 		select {
@@ -72,17 +79,20 @@ func main() {
 				if err = w.Add(event.Name); err != nil {
 					panic(err)
 				}
+			}
+
+			resolved, err := filepath.EvalSymlinks(opts.ConfigFile)
+			if err != nil {
+				log(err)
+			} else if resolved != lastLocation {
+				// configmap has changed, points to new symlink; reload
+				lastLocation = resolved
+				log("resolved:", lastLocation)
 				if err = reload(opts); err != nil {
 					log(err)
 				}
 			}
 
-			// also allow normal files to be modified and reloaded.
-			if event.Op == fsnotify.Write {
-				if err = reload(opts); err != nil {
-					log(err)
-				}
-			}
 		}
 	}
 }
