@@ -59,12 +59,12 @@ endif
 	go generate ./pkg/... ./cmd/...
 
 # Build the docker image
-docker-build: docker-build-controller docker-build-sidecar
+docker-build: docker-build-controller docker-build-sidecar docker-build-elastic
 
 docker-build-controller:
 	docker build . -t ${IMG} -f controller.Dockerfile
 	@echo "updating kustomize image patch file for manager resource"
-	sed -i'' 's@image: .*@image: '"${IMG}"'@' ./config/default/manager_image_patch.yaml
+	# sed -i'' 's@image: .*@image: '"${IMG}"'@' ./config/default/manager_image_patch.yaml
 
 docker-build-sidecar:
 	docker build . -t ${SIDECAR_IMG} -f sidecar.Dockerfile
