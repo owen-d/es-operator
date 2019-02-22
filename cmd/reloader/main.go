@@ -41,10 +41,6 @@ type Config struct {
 }
 
 func main() {
-	if opts.ConfigFile == "" {
-		bail(errors.New("no config-file specified"))
-	}
-	log(fmt.Sprintf("%s: %+v", "successfully parsed arguments", opts))
 
 	files, errs, done, err := watcher.ConfigMapChanges(opts.ConfigFile)
 	if err != nil {
@@ -127,5 +123,11 @@ func init() {
 	if err != nil {
 		os.Exit(1)
 	}
+
+	if opts.ConfigFile == "" {
+		bail(errors.New("no config-file specified"))
+	}
+	log("successfuly parsed arguments: ", fmt.Sprintf("%+v", opts))
+
 	client.Timeout = time.Second * 3
 }
