@@ -56,10 +56,11 @@ func main() {
 		select {
 		case <-done:
 			log("watcher exhausted")
+			break
 		case err = <-errs:
 			log(err)
 		case changed := <-files:
-			log("file changed")
+			log("file changed:\n", string(changed))
 			if err = reload(changed); err != nil {
 				log(err)
 			}

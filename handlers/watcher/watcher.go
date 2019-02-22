@@ -6,6 +6,16 @@ import (
 	"path/filepath"
 )
 
+func DirOfSymlink(file string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(file)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(resolved), nil
+}
+
+// ConfigMapChanges targets the parent dir of a wanted file (configmaps are generally mounted as a dir unless subPath is specified)
+// fsnotify plays nicely with watching a parent dir -- this will only work with 1 level nested configmaps that are mounted as a dir
 func ConfigMapChanges(file string) (<-chan []byte, <-chan error, <-chan struct{}, error) {
 	errCh := make(chan error)
 	fCh := make(chan []byte)
@@ -16,12 +26,12 @@ func ConfigMapChanges(file string) (<-chan []byte, <-chan error, <-chan struct{}
 		return nil, nil, nil, err
 	}
 
-	if err = w.Add(file); err != nil {
+	watchDir, err := DirOfSymlink(file)
+	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	curPath, changed, err := BackingSymlinkChange(file, "")
-	if err != nil {
+	if err = w.Add(watchDir); err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -35,33 +45,35 @@ func ConfigMapChanges(file string) (<-chan []byte, <-chan error, <-chan struct{}
 				errCh <- err
 
 			case event := <-w.Events:
+				// backing file are removed after updates
 				if event.Op == fsnotify.Remove {
 					// remove the watcher since the file is removed
-					w.Remove(event.Name)
-					// add a new watcher pointing to the new symlink/file
-					if err = w.Add(event.Name); err != nil {
+					w.Remove(watchDir)
+
+					watchDir, err = DirOfSymlink(file)
+					if err != nil {
 						errCh <- err
 						break
 					}
-				}
 
-				curPath, changed, err = BackingSymlinkChange(file, curPath)
-				if changed {
+					// add a new watcher pointing to the new symlink dir
+					if err = w.Add(watchDir); err != nil {
+						errCh <- err
+						break
+					}
+
 					b, err := ioutil.ReadFile(file)
 					if err != nil {
 						errCh <- err
 					}
 					fCh <- b
+
 				}
+
 			}
 		}
 		done <- struct{}{}
 
 	}()
 	return fCh, errCh, done, nil
-}
-
-func BackingSymlinkChange(file string, lastPath string) (string, bool, error) {
-	resolved, err := filepath.EvalSymlinks(file)
-	return resolved, lastPath == resolved, err
 }

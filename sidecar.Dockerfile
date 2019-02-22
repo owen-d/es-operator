@@ -5,6 +5,7 @@ FROM golang:1.10.3 as builder
 WORKDIR /go/src/github.com/owen-d/es-operator
 COPY pkg/    pkg/
 COPY cmd/    cmd/
+COPY handlers/ handlers/
 COPY vendor/ vendor/
 
 # Build
