@@ -89,7 +89,10 @@ func reload(fileBytes []byte) (err error) {
 		return err
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, err := ioutil.ReadAll(resp.Body)
+		if err == nil {
+			defer resp.Body.Close()
+		}
 		return errors.New(fmt.Sprint("bad status:", resp.StatusCode, "body:", string(body)))
 	}
 	log("successfully updated elastic with new minimum_masters:", conf.Discovery.Zen.MininumMasterNodes)
