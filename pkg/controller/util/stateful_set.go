@@ -24,7 +24,7 @@ const (
 	configVolumeMountPath = "/usr/share/elasticsearch/config/elasticsearch.yml"
 	elasticConfigFile     = "elasticsearch.yml"
 	esImage               = "docker.elastic.co/elasticsearch/elasticsearch"
-	esTag                 = "6.6.0"
+	esTag                 = "6.6.1"
 	reloaderImage         = "owend/es-sidecar"
 	reloaderTag           = "latest"
 	maxMapCount           = 262144
@@ -123,6 +123,16 @@ func ReconcileStatefulSet(
 									MountPath: configVolumeMountPath,
 									SubPath:   elasticConfigFile,
 									ReadOnly:  true,
+								},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								Capabilities: &corev1.Capabilities{
+									Add: []corev1.Capability{
+										// lock memory
+										"IPC_LOCK",
+										// override resource limits
+										"SYS_RESOURCE",
+									},
 								},
 							},
 						},

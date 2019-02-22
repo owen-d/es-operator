@@ -20,6 +20,7 @@ discovery:
     ping.unicast.hosts: ${DISCOVERY_URL}
     minimum_master_nodes: %d
 xpack.security.enabled: false
+bootstrap.memory_lock: true
 `
 
 func QuorumConfigMap(

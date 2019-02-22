@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jessevdk/go-flags"
-	"gopkg.in/fsnotify.v1"
+	"github.com/owen-d/es-operator/handlers/watcher"
 	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -47,64 +46,31 @@ func main() {
 	}
 	log(fmt.Sprintf("%s: %+v", "successfully parsed arguments", opts))
 
-	w, err := fsnotify.NewWatcher()
+	files, errs, done, err := watcher.ConfigMapChanges(opts.ConfigFile)
 	if err != nil {
 		bail(err)
 	}
-	defer w.Close()
-
-	if err = w.Add(opts.ConfigFile); err != nil {
-		bail(err)
-	}
-
-	lastLocation, err := filepath.EvalSymlinks(opts.ConfigFile)
-	if err != nil {
-		bail(err)
-	}
-	log("resolved:", lastLocation)
 
 	log("awaiting events")
 	for {
 		select {
-		case err = <-w.Errors:
-			bail(err)
-		case event := <-w.Events:
-			log("found event:", event)
-			// k8s configmaps uses symlinks, we need this workaround.
-			// original configmap file is removed
-			if event.Op == fsnotify.Remove {
-				// remove the watcher since the file is removed
-				w.Remove(event.Name)
-				// add a new watcher pointing to the new symlink/file
-				if err = w.Add(event.Name); err != nil {
-					panic(err)
-				}
-			}
-
-			resolved, err := filepath.EvalSymlinks(opts.ConfigFile)
-			if err != nil {
+		case <-done:
+			log("watcher exhausted")
+		case err = <-errs:
+			log(err)
+		case changed := <-files:
+			log("file changed")
+			if err = reload(changed); err != nil {
 				log(err)
-			} else if resolved != lastLocation {
-				// configmap has changed, points to new symlink; reload
-				lastLocation = resolved
-				log("resolved:", lastLocation)
-				if err = reload(opts); err != nil {
-					log(err)
-				}
 			}
-
 		}
 	}
 }
 
-func reload(opts Options) error {
+func reload(fileBytes []byte) (err error) {
 	var conf Config
-	b, err := ioutil.ReadFile(opts.ConfigFile)
-	if err != nil {
-		return err
-	}
 
-	if err = yaml.Unmarshal(b, &conf); err != nil {
+	if err = yaml.Unmarshal(fileBytes, &conf); err != nil {
 		return err
 	}
 

@@ -2,6 +2,7 @@
 # Image URL to use all building/pushing image targets
 IMG ?= owend/es-controller:latest
 SIDECAR_IMG ?= owend/es-sidecar:latest
+ELASTIC_IMG ?= owend/es-k8s:latest
 
 all: test manager
 
@@ -68,7 +69,11 @@ docker-build-controller:
 docker-build-sidecar:
 	docker build . -t ${SIDECAR_IMG} -f sidecar.Dockerfile
 
-# Push the docker image
+docker-build-elastic:
+	docker build . -t ${ELASTIC_IMG} -f elastic.Dockerfile
+
+# Push the docker images
 docker-push:
 	docker push ${IMG}
 	docker push ${SIDECAR_IMG}
+	docker push ${ELASTIC_IMG}
