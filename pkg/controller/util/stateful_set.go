@@ -20,14 +20,15 @@ import (
 )
 
 const (
-	dataVolumeMountPath   = "/usr/share/elasticsearch/data"
-	configVolumeMountPath = "/usr/share/elasticsearch/config/elasticsearch.yml"
-	elasticConfigFile     = "elasticsearch.yml"
-	esImage               = "docker.elastic.co/elasticsearch/elasticsearch"
-	esTag                 = "6.6.1"
-	reloaderImage         = "owend/es-sidecar"
-	reloaderTag           = "latest"
-	maxMapCount           = 262144
+	dataVolumeMountPath       = "/usr/share/elasticsearch/data"
+	configVolumeMountPath     = "/usr/share/elasticsearch/config/elasticsearch.yml"
+	schedulingVolumeMountPath = "/usr/share/elasticsearch/scheduling"
+	elasticConfigFile         = "elasticsearch.yml"
+	esImage                   = "docker.elastic.co/elasticsearch/elasticsearch"
+	esTag                     = "6.6.1"
+	reloaderImage             = "owend/es-sidecar"
+	reloaderTag               = "latest"
+	maxMapCount               = 262144
 )
 
 // GroupID for the elasticsearch user. The official elastic docker images always have the id of 1000
@@ -58,7 +59,7 @@ func ReconcileStatefulSet(
 		return res, err
 	}
 
-	name := StatefulSetName(clusterName, pool.Name, pool.IsMasterEligible())
+	name := StatefulSetName(clusterName, pool.Name)
 	var storageClass *string
 	if pool.StorageClass != "" {
 		storageClass = &pool.StorageClass
@@ -124,6 +125,11 @@ func ReconcileStatefulSet(
 									SubPath:   elasticConfigFile,
 									ReadOnly:  true,
 								},
+								{
+									Name:      PoolSchedulableConfigMapName(clusterName, pool.Name),
+									MountPath: schedulingVolumeMountPath,
+									ReadOnly:  true,
+								},
 							},
 							SecurityContext: &corev1.SecurityContext{
 								Capabilities: &corev1.Capabilities{
@@ -152,6 +158,16 @@ func ReconcileStatefulSet(
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
 										Name: QuorumConfigMapName(clusterName),
+									},
+								},
+							},
+						},
+						{
+							Name: PoolSchedulableConfigMapName(clusterName, pool.Name),
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: PoolSchedulableConfigMapName(clusterName, pool.Name),
 									},
 								},
 							},
@@ -231,7 +247,7 @@ func ReconcileHeadlessServiceForStatefulSet(
 				corev1.ServicePort{Port: 9200},
 			},
 			Selector: map[string]string{
-				StatefulSetKey: StatefulSetName(clusterName, pool.Name, pool.IsMasterEligible()),
+				StatefulSetKey: StatefulSetName(clusterName, pool.Name),
 			},
 		},
 	}

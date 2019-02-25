@@ -132,6 +132,28 @@ func (r *ReconcilePool) Reconcile(request reconcile.Request) (reconcile.Result, 
 		extraLabels[util.QuorumLabelKey] = quorumName
 	}
 
+	schedulableConfigMap, err := util.SchedulableConfigMap(
+		clusterName,
+		instance.Namespace,
+		instance.Spec,
+		instance,
+		r.scheme,
+	)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	err = util.ReconcileConfigMap(
+		r,
+		r.scheme,
+		log,
+		instance,
+		schedulableConfigMap,
+	)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return util.ReconcileStatefulSet(
 		r,
 		r.scheme,

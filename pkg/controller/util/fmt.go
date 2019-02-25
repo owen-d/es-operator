@@ -10,14 +10,8 @@ func StatefulSetService(cluster, setName string) string {
 	return strings.Join([]string{cluster, setName, "headless"}, "-")
 }
 
-func StatefulSetName(cluster, poolName string, isQuorum bool) string {
-	var args []string
-	if isQuorum {
-		args = []string{cluster, "quorum", poolName}
-	} else {
-		args = []string{cluster, "drone", poolName}
-	}
-	return strings.Join(args, "-")
+func StatefulSetName(cluster, poolName string) string {
+	return PoolName(cluster, poolName)
 }
 
 func PoolName(cluster, poolName string) string {
@@ -31,6 +25,11 @@ func QuorumName(cluster string) string {
 // ConfigMapName refers to the default configmap used by all nodes (contains minMasters & discovery)
 func QuorumConfigMapName(cluster string) string {
 	return strings.Join([]string{cluster, "quorum"}, "-")
+}
+
+// PoolSchedulableConfigMapName refers to the default configmap used by all nodes (contains minMasters & discovery)
+func PoolSchedulableConfigMapName(cluster, pool string) string {
+	return strings.Join([]string{PoolName(cluster, pool), "schedulable"}, "-")
 }
 
 func MasterDiscoveryServiceName(cluster string) string {
@@ -51,6 +50,10 @@ func QuorumLabels(clusterName, quorumName string) map[string]string {
 
 func DataVolumeNameTemplate(cluster, pool string) string {
 	return strings.Join([]string{cluster, pool, "data"}, "-")
+}
+
+func PodName(cluster string, pool string, idx int) string {
+	return fmt.Sprintf("%s-%d", PoolName(cluster, pool), idx)
 }
 
 func UniqueStrings(xs ...string) []string {
