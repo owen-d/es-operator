@@ -3,11 +3,13 @@
 IMG ?= owend/es-controller:latest
 SIDECAR_IMG ?= owend/es-sidecar:latest
 ELASTIC_IMG ?= owend/es-k8s:latest
+CLUSTER_ENDPOINT ?= $$(minikube ip):$$(kubectl get svc mycluster -o jsonpath='{.spec.ports[0].nodePort}')
+SAMPLE_DATA_FILE ?= ~/Downloads/shakespeare_6.0.json
 
 all: test manager
 
 ping:
-	curl $$(minikube ip):$$(kubectl get svc mycluster -o jsonpath='{.spec.ports[0].nodePort}')/_cluster/health | jq '.'
+	curl $(CLUSTER_ENDPOINT)/_cluster/health | jq '.'
 
 clean-pvc:
 	kubectl get pvc | tail -n +2 | awk '{print $$1}' | xargs -n 1 kubectl delete pvc
@@ -25,6 +27,9 @@ manager: generate fmt vet
 
 sidecar:
 	go build -o bin/reloader github.com/owen-d/es-operator/cmd/reloader
+
+handler:
+	go build -o bin/handler github.com/owen-d/es-operator/cmd/handler
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet
@@ -77,3 +82,7 @@ docker-push:
 	docker push ${IMG}
 	docker push ${SIDECAR_IMG}
 	docker push ${ELASTIC_IMG}
+
+test-data:
+	curl -XPUT -H 'Content-Type: application/json' 'localhost:9200/shakespeare?pretty' -d "$$(cat hack/sample-data/shakespeare.json)"
+	curl -H 'Content-Type: application/x-ndjson' -XPOST 'localhost:9200/shakespeare/doc/_bulk?pretty' --data-binary @$(SAMPLE_DATA_FILE)
