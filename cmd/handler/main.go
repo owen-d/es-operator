@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/jessevdk/go-flags"
 	"github.com/owen-d/es-operator/handlers/watcher"
+	"github.com/owen-d/es-operator/pkg/controller/util"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -14,7 +16,7 @@ import (
 var (
 	client *http.Client = http.DefaultClient
 	opts   Options
-	conf   ConfigFile
+	conf   util.SchedulableConfig
 )
 
 type Options struct {
@@ -23,25 +25,27 @@ type Options struct {
 	NodeName   string
 }
 
-type ConfigFile struct {
-	UnSchedulable bool `yaml:"unschedulable"`
+func Schedulable(conf util.SchedulableConfig, nodeName string) bool {
+	return ExistsIn(conf.SchedulableNodes, opts.NodeName)
 }
 
 // Handler applies shard schedulability based on a config file.
 // It also maintains a ticker which exits the current process if the current node is not schedulable and has no shards
 func main() {
-	files, errs, done, err := watcher.ConfigMapChanges(opts.ConfigFile)
+	files, errs, configDone, err := watcher.ConfigMapChanges(opts.ConfigFile)
 	if err != nil {
 		bail(err)
 	}
+
+	done := make(chan struct{})
 
 	go func() {
 		log("awaiting events")
 		for {
 			select {
-			case <-done:
+			case <-configDone:
 				log("watcher exhausted")
-				os.Exit(1)
+				done <- struct{}{}
 			case err = <-errs:
 				log(err)
 			case changed := <-files:
@@ -57,16 +61,23 @@ func main() {
 		ticker := time.NewTicker(time.Second * 10)
 		for {
 			<-ticker.C
-			if !conf.UnSchedulable {
+			if Schedulable(conf, opts.NodeName) {
 				continue
 			}
 
 			// check currently allocated shards to this node & if 0, exit
-			// TODO: implement (_cat/shards)
-			panic("unimplemented")
+			shards, err := GetShardsForNode(client, opts.NodeName)
+			if err != nil {
+				log(err)
+			}
+			if len(shards) == 0 {
+				log(fmt.Sprintf("no shards remaining on this unschedulable node [%s], terminating...", opts.NodeName))
+				done <- struct{}{}
+			}
 		}
 	}()
 
+	<-done
 }
 
 func UpdateRouting(fileBytes []byte) (err error) {
@@ -79,9 +90,10 @@ func UpdateRouting(fileBytes []byte) (err error) {
 		return err
 	}
 
-	if conf.UnSchedulable && !settings.Excluded(opts.NodeName) {
+	schedulable := Schedulable(conf, opts.NodeName)
+	if !schedulable && !settings.Excluded(opts.NodeName) {
 		settings.Exclude(opts.NodeName)
-	} else if !conf.UnSchedulable && settings.Excluded(opts.NodeName) {
+	} else if schedulable && settings.Excluded(opts.NodeName) {
 		settings.Include(opts.NodeName)
 	} else {
 		return nil
@@ -112,13 +124,23 @@ func init() {
 
 	opts.NodeName = os.Getenv("POD_NAME")
 	if opts.NodeName == "" {
-		bail(errors.New("no NODE_NAME env var"))
+		bail(errors.New("no POD_NAME env var"))
 	}
 
 	if opts.ConfigFile == "" {
 		bail(errors.New("no config-file specified"))
 	}
 	log(fmt.Sprintf("%s: %+v", "successfully parsed arguments", opts))
+
+	// populate initial config from file
+	b, err := ioutil.ReadFile(opts.ConfigFile)
+	if err != nil {
+		bail(err)
+	}
+
+	if err = yaml.Unmarshal(b, &conf); err != nil {
+		bail(err)
+	}
 
 	client.Timeout = time.Second * 3
 }

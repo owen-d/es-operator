@@ -41,13 +41,18 @@ type ElasticAllocationSettings struct {
 	} `json:"persistent,omitempty"`
 }
 
-func (e *ElasticAllocationSettings) Excluded(name string) bool {
-	for _, exclusion := range strings.Split(e.Transient.Cluster.Routing.Allocation.Exclude.Name, ",") {
-		if name == exclusion {
+func ExistsIn(xs []string, val string) bool {
+	for _, x := range xs {
+		if x == val {
 			return true
 		}
 	}
 	return false
+
+}
+
+func (e *ElasticAllocationSettings) Excluded(name string) bool {
+	return ExistsIn(strings.Split(e.Transient.Cluster.Routing.Allocation.Exclude.Name, ","), name)
 }
 
 func (e *ElasticAllocationSettings) Exclude(name string) {
@@ -109,6 +114,12 @@ func PutAllocationSettings(client *http.Client, settings ElasticAllocationSettin
 		body,
 	)
 
+}
+
+type Shard struct{}
+
+func GetShardsForNode(client *http.Client, nodeName string) (shards []Shard, err error) {
+	return
 }
 
 func Put(c *http.Client, url string, contentType string, body io.ReadCloser) (*http.Response, error) {

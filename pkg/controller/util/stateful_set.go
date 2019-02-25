@@ -24,8 +24,8 @@ const (
 	configVolumeMountPath     = "/usr/share/elasticsearch/config/elasticsearch.yml"
 	schedulingVolumeMountPath = "/usr/share/elasticsearch/scheduling"
 	elasticConfigFile         = "elasticsearch.yml"
-	esImage                   = "docker.elastic.co/elasticsearch/elasticsearch"
-	esTag                     = "6.6.1"
+	esImage                   = "owend/es-k8s"
+	esTag                     = "latest"
 	reloaderImage             = "owend/es-sidecar"
 	reloaderTag               = "latest"
 	maxMapCount               = 262144
