@@ -4,7 +4,7 @@ IMG ?= owend/es-controller:latest
 SIDECAR_IMG ?= owend/es-sidecar:latest
 ELASTIC_IMG ?= owend/es-k8s:latest
 CLUSTER_ENDPOINT ?= $$(minikube ip):$$(kubectl get svc mycluster -o jsonpath='{.spec.ports[0].nodePort}')
-SAMPLE_DATA_FILE ?= ~/Downloads/shakespeare_6.0.json
+SAMPLE_DATA_FILE ?= $$HOME/Downloads/shakespeare_6.0.json
 
 all: test manager
 
@@ -84,5 +84,15 @@ docker-push:
 	docker push ${ELASTIC_IMG}
 
 test-data:
-	curl -XPUT -H 'Content-Type: application/json' 'localhost:9200/shakespeare?pretty' -d "$$(cat hack/sample-data/shakespeare.json)"
-	curl -H 'Content-Type: application/x-ndjson' -XPOST 'localhost:9200/shakespeare/doc/_bulk?pretty' --data-binary @$(SAMPLE_DATA_FILE)
+	curl -XPUT -H 'Content-Type: application/json' "$(CLUSTER_ENDPOINT)/shakespeare?pretty" -d "$$(cat hack/sample-data/shakespeare.json)"
+	curl -H 'Content-Type: application/x-ndjson' -XPOST "$(CLUSTER_ENDPOINT)/shakespeare/doc/_bulk?pretty" --data-binary @$(SAMPLE_DATA_FILE)
+
+hq:
+	docker run -p 5000:5000 --name=hq -d -e "HQ_DEFAULT_URL=http://$(CLUSTER_ENDPOINT)" elastichq/elasticsearch-hq
+	open http://localhost:5000
+
+rm-hq:
+	docker stop hq && docker rm hq || :
+
+cleanup: rm-hq
+	minikube delete
