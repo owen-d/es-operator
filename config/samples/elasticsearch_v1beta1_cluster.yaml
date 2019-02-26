@@ -11,12 +11,14 @@ spec:
       roles:
         - master
         - data
-      replicas: 2
+      replicas: 3
       storageClass: "standard"
       resources:
         requests:
-          memory: "1Gi"
-          cpu: "500m"
+          memory: "256Mi"
+          cpu: "200m"
+          # memory: "1Gi"
+          # cpu: "500m"
     # - name: data
     #   roles:
     #     - data

@@ -29,10 +29,8 @@ const (
 	reloaderImage             = "owend/es-sidecar"
 	reloaderTag               = "latest"
 	maxMapCount               = 262144
+	esJavaOpts                = "-Xms256m -Xmx256m"
 )
-
-// GroupID for the elasticsearch user. The official elastic docker images always have the id of 1000
-var esFsGroup int64 = 1000
 
 func ReconcileStatefulSet(
 	client client.Client,
@@ -87,9 +85,6 @@ func ReconcileStatefulSet(
 					Labels: podLabels,
 				},
 				Spec: corev1.PodSpec{
-					SecurityContext: &corev1.PodSecurityContext{
-						FSGroup: &esFsGroup,
-					},
 					InitContainers: mkInitContainers(CatImage(esImage, esTag), maxMapCount),
 					Containers: []corev1.Container{
 						{
@@ -310,6 +305,10 @@ func mkEnv(clusterName string, namespace string, pool elasticsearchv1beta1.PoolS
 		corev1.EnvVar{
 			Name:  "DISCOVERY_URL",
 			Value: DiscoveryServiceDNS(clusterName, namespace),
+		},
+		corev1.EnvVar{
+			Name:  "ES_JAVA_OPTS",
+			Value: esJavaOpts,
 		},
 	}
 	return podEnv
