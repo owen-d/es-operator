@@ -13,7 +13,7 @@ then
     # the limit on the number of processes that elasticsearch can create
     # 2048 is min to pass the linux checks (default is 50)
     # https://www.elastic.co/guide/en/elasticsearch/reference/current/max-number-threads-check.html
-    ulimit -u 2048
+    ulimit -u 4096
 
     # swapping needs to be disabled for performance and node stability
     # in ElasticSearch config we are using: [bootstrap.memory_lock=true]
@@ -22,11 +22,11 @@ then
     ulimit -l unlimited
 fi
 
-if [ ! "NO_HANDLER" ];
+if [ "${NO_HANDLER}" ];
 then
     HANDLER_CMD=""
 else
     HANDLER_CMD="/usr/local/bin/handler ${HANDLER_OPTS:=-v -c /usr/share/elasticsearch/scheduling/schedulable.yml }"
 fi
 
-exec codep "${HANDLER_CMD}" "/usr/local/bin/docker-entrypoint.sh $@"
+gosu elasticsearch codep "${HANDLER_CMD}" "/usr/local/bin/docker-entrypoint.sh $@"
