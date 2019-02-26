@@ -71,22 +71,33 @@ func LessThanDesired(xs []PoolStats) bool {
 	return false
 }
 
+// PoolsForScheduling returns the list of desired pool stats for the next round of scheduling
+// as well as the next PodDisruptionBudget minAvailable number.
+// We set the PDB to one higher than desired when scaling
+// down to allow the node to be drained by it's handler after it's configmap updates and
+// labels it unschedulable
 func PoolsForScheduling(
 	desired int32,
 	xs []PoolStats,
-) ([]PoolStats, error) {
-	if ready := NumReady(xs); desired > ready {
+) ([]PoolStats, int, error) {
+	ready := NumReady(xs)
+
+	if desired > ready {
 		err := scaleUp(xs)
-		return xs, err
+		return xs, int(ready + 1), err
 	} else if desired < ready {
 		err := scaleDown(xs)
-		return xs, err
+		return xs, int(ready), err
 	} else if LessThanDesired(xs) {
+		// we have alive=desired, but they're distributed across different node pools
+		// than we'd like. Trigger a scale-up, which will allocate a node
+		// to a pool we want and afterwards it'll trigger a
+		// scale down, removing from a pool we don't want allocated.
 		err := scaleUp(xs)
-		return xs, err
+		return xs, int(ready + 1), err
 	}
 
-	return xs, nil
+	return xs, int(ready), nil
 }
 
 func sortPoolBy(xs []PoolStats, lessFn func(PoolStats, PoolStats) bool) {

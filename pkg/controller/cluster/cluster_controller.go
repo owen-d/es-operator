@@ -193,13 +193,11 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 ) {
 	_, dronePools := cluster.Spec.Pools()
 
-	extraLabels := map[string]string{
-		util.ClusterLabelKey: cluster.Name,
-	}
+	labels := util.DroneLabels(cluster.Name)
 
 	desired := elasticsearchv1beta1.DesiredReplicas(dronePools)
 
-	specs, forDeletion, err := util.ResolvePools(
+	specs, forDeletion, minAvailable, err := util.ResolvePools(
 		r,
 		cluster.Name,
 		cluster.Namespace,
@@ -208,6 +206,23 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 		desired,
 	)
 
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	pdbSpec := util.MkPdbMinAvailable(minAvailable, labels)
+
+	log.Info("setting pdb", "minAvailable", minAvailable, "name", util.PdbName(cluster.Name, false))
+	err = util.EnsurePDB(
+		r,
+		r.scheme,
+		log,
+		cluster,
+		cluster.Namespace,
+		util.PdbName(cluster.Name, false),
+		pdbSpec,
+		labels,
+	)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -232,7 +247,7 @@ func (r *ReconcileCluster) ReconcilePools(cluster *elasticsearchv1beta1.Cluster)
 		cluster.Name,
 		cluster.Namespace,
 		specs,
-		extraLabels,
+		labels,
 	)
 }
 

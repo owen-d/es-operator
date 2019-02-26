@@ -152,6 +152,7 @@ func EnsurePoolsDeleted(
 }
 
 // ResolvePools will determine what the desired replica counts are as well as any possible unpruned pool deletions.
+// It also returns the next desired pod disruption MinAvailable number
 func ResolvePools(
 	client client.Client,
 	clusterName string,
@@ -162,15 +163,16 @@ func ResolvePools(
 ) (
 	[]elasticsearchv1beta1.PoolSpec,
 	[]elasticsearchv1beta1.PoolSpec,
+	int,
 	error,
 ) {
-	stats, err := scheduler.PoolsForScheduling(
+	stats, pdbNo, err := scheduler.PoolsForScheduling(
 		desired,
 		scheduler.ToStats(specs, metrics),
 	)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, pdbNo, err
 	}
 
 	res, forDeletion, err := ToPools(
@@ -182,8 +184,8 @@ func ResolvePools(
 	)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, pdbNo, err
 	}
 
-	return res, forDeletion, nil
+	return res, forDeletion, pdbNo, nil
 }

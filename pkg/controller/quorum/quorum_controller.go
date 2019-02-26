@@ -239,7 +239,7 @@ func (r *ReconcileQuorum) ReconcilePools(
 	labels := util.QuorumLabels(clusterName, quorum.Name)
 	log.Info("generated labels", "labels", labels, "targetQuorum", quorum.Name)
 
-	specs, forDeletion, err := util.ResolvePools(
+	specs, forDeletion, minAvailable, err := util.ResolvePools(
 		r,
 		clusterName,
 		quorum.Namespace,
@@ -251,6 +251,20 @@ func (r *ReconcileQuorum) ReconcilePools(
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+
+	pdbSpec := util.MkPdbMinAvailable(minAvailable, labels)
+
+	log.Info("setting pdb", "minAvailable", minAvailable, "name", util.PdbName(clusterName, true))
+	err = util.EnsurePDB(
+		r,
+		r.scheme,
+		log,
+		quorum,
+		quorum.Namespace,
+		util.PdbName(clusterName, true),
+		pdbSpec,
+		labels,
+	)
 
 	err = util.EnsurePoolsDeleted(
 		r,

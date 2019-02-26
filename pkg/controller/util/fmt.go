@@ -48,12 +48,27 @@ func QuorumLabels(clusterName, quorumName string) map[string]string {
 	}
 }
 
+func DroneLabels(clusterName string) map[string]string {
+	return map[string]string{
+		DroneKey:        "true",
+		ClusterLabelKey: clusterName,
+	}
+}
+
 func DataVolumeNameTemplate(cluster, pool string) string {
 	return strings.Join([]string{cluster, pool, "data"}, "-")
 }
 
 func PodName(cluster string, pool string, idx int) string {
 	return fmt.Sprintf("%s-%d", PoolName(cluster, pool), idx)
+}
+
+func PdbName(cluster string, isQuorum bool) string {
+	if isQuorum {
+		return strings.Join([]string{"cluster", "quorum"}, "-")
+	} else {
+		return strings.Join([]string{"cluster", "non", "quorum"}, "-")
+	}
 }
 
 func UniqueStrings(xs ...string) []string {
