@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/olivere/elastic"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -27,6 +29,8 @@ example:
 }
 */
 
+// TODO: executing these on all nodes definitely exposes us to race conditions where changes
+// can be swallowed.
 type ElasticAllocationSettings struct {
 	Transient struct {
 		Cluster struct {
@@ -116,10 +120,22 @@ func PutAllocationSettings(client *http.Client, settings ElasticAllocationSettin
 
 }
 
-type Shard struct{}
+func GetShardsForNode(client *elastic.Client, nodeName string) (shards int, err error) {
+	svc := elastic.NewCatAllocationService(client)
+	svc.NodeID(nodeName)
+	res, err := svc.Do(context.TODO())
+	if err != nil {
+		return shards, err
+	}
 
-func GetShardsForNode(client *http.Client, nodeName string) (shards []Shard, err error) {
-	return
+	for _, alloc := range res {
+		if alloc.Node == nodeName {
+			return alloc.Shards, nil
+		}
+	}
+
+	return 0, nil
+
 }
 
 func Put(c *http.Client, url string, contentType string, body io.ReadCloser) (*http.Response, error) {

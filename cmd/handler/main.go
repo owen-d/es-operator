@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jessevdk/go-flags"
+	"github.com/olivere/elastic"
 	"github.com/owen-d/es-operator/handlers/watcher"
 	"github.com/owen-d/es-operator/pkg/controller/util"
 	"gopkg.in/yaml.v2"
@@ -14,9 +15,10 @@ import (
 )
 
 var (
-	client *http.Client = http.DefaultClient
-	opts   Options
-	conf   util.SchedulableConfig
+	client   *http.Client = http.DefaultClient
+	opts     Options
+	conf     util.SchedulableConfig
+	esClient *elastic.Client
 )
 
 type Options struct {
@@ -59,6 +61,7 @@ func main() {
 
 	go func() {
 		ticker := time.NewTicker(time.Second * 10)
+		log("ticker started")
 		for {
 			<-ticker.C
 			if Schedulable(conf, opts.NodeName) {
@@ -66,11 +69,12 @@ func main() {
 			}
 
 			// check currently allocated shards to this node & if 0, exit
-			shards, err := GetShardsForNode(client, opts.NodeName)
+			numShards, err := GetShardsForNode(esClient, opts.NodeName)
+			log(fmt.Sprintf("found [%d] shards for unschedulable node [%s]", numShards, opts.NodeName))
 			if err != nil {
 				log(err)
 			}
-			if len(shards) == 0 {
+			if numShards == 0 {
 				log(fmt.Sprintf("no shards remaining on this unschedulable node [%s], terminating...", opts.NodeName))
 				done <- struct{}{}
 			}
@@ -92,8 +96,16 @@ func UpdateRouting(fileBytes []byte) (err error) {
 
 	schedulable := Schedulable(conf, opts.NodeName)
 	if !schedulable && !settings.Excluded(opts.NodeName) {
+		log(fmt.Sprintf(
+			"[%s] marked as unschedulable but not marked as such in elastic, updating elastic...",
+			opts.NodeName,
+		))
 		settings.Exclude(opts.NodeName)
 	} else if schedulable && settings.Excluded(opts.NodeName) {
+		log(fmt.Sprintf(
+			"[%s] marked as schedulable but not marked as such in elastic, updating elastic...",
+			opts.NodeName,
+		))
 		settings.Include(opts.NodeName)
 	} else {
 		return nil
@@ -143,4 +155,15 @@ func init() {
 	}
 
 	client.Timeout = time.Second * 3
+
+	esClient, err = elastic.NewClient(
+		elastic.SetHttpClient(client),
+		elastic.SetSniff(false),
+		elastic.SetHealthcheck(true),
+		elastic.SetHealthcheckTimeoutStartup(time.Minute),
+	)
+
+	if err != nil {
+		bail(err)
+	}
 }
