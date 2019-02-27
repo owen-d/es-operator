@@ -15,6 +15,10 @@ type PoolStats struct {
 	Dangling bool
 	// ScheduleReplicas denotes how many replicas should be scheduled for a node pool
 	ScheduleReplicas int32
+	// LastUnschedulable denotes that the last indexed node in a pool should not be schedulable for shards.
+	// This is primarily used to facilitate scale-downs which should have shards drained at the application
+	// level before being removed by k8s.
+	LastUnschedulable bool
 }
 
 // ToStats takes a list of poolspecs and a list of metrics mapping pools -> number of ready replicas.
@@ -72,32 +76,25 @@ func LessThanDesired(xs []PoolStats) bool {
 }
 
 // PoolsForScheduling returns the list of desired pool stats for the next round of scheduling
-// as well as the next PodDisruptionBudget minAvailable number.
-// We set the PDB to one higher than desired when scaling
-// down to allow the node to be drained by it's handler after it's configmap updates and
-// labels it unschedulable
 func PoolsForScheduling(
 	desired int32,
 	xs []PoolStats,
-) ([]PoolStats, int, error) {
+) ([]PoolStats, error) {
 	ready := NumReady(xs)
 
 	if desired > ready {
-		err := scaleUp(xs)
-		return xs, int(ready + 1), err
+		return scaleUp(xs)
 	} else if desired < ready {
-		err := scaleDown(xs)
-		return xs, int(ready), err
+		return scaleDown(xs)
 	} else if LessThanDesired(xs) {
 		// we have alive=desired, but they're distributed across different node pools
 		// than we'd like. Trigger a scale-up, which will allocate a node
 		// to a pool we want and afterwards it'll trigger a
 		// scale down, removing from a pool we don't want allocated.
-		err := scaleUp(xs)
-		return xs, int(ready + 1), err
+		return scaleUp(xs)
 	}
 
-	return xs, int(ready), nil
+	return xs, nil
 }
 
 func sortPoolBy(xs []PoolStats, lessFn func(PoolStats, PoolStats) bool) {
@@ -107,9 +104,10 @@ func sortPoolBy(xs []PoolStats, lessFn func(PoolStats, PoolStats) bool) {
 	sort.SliceStable(xs, sortFn)
 }
 
-func scaleUp(xs []PoolStats) (err error) {
+func scaleUp(xs []PoolStats) ([]PoolStats, error) {
+
 	if len(xs) == 0 {
-		return fmt.Errorf("0 len PoolStats")
+		return xs, fmt.Errorf("0 len PoolStats")
 	}
 	// sort pools with smallest ready/replicas ratio to the front
 	ratio := func(x PoolStats) float64 {
@@ -127,12 +125,12 @@ func scaleUp(xs []PoolStats) (err error) {
 	sortPoolBy(xs, lessFn)
 	first := &xs[0]
 	first.ScheduleReplicas += 1
-	return nil
+	return xs, nil
 }
 
-func scaleDown(xs []PoolStats) (err error) {
+func scaleDown(xs []PoolStats) ([]PoolStats, error) {
 	if len(xs) == 0 {
-		return fmt.Errorf("0 len PoolStats")
+		return xs, fmt.Errorf("0 len PoolStats")
 	}
 	// sort pools with largest ready/replicas ratio to the front
 	ratio := func(x PoolStats) float64 {
@@ -149,6 +147,8 @@ func scaleDown(xs []PoolStats) (err error) {
 
 	sortPoolBy(xs, lessFn)
 	first := &xs[0]
-	first.ScheduleReplicas -= 1
-	return nil
+	// adjusting the schedulereplicas down by one will be handled after the ready count has dropped
+	// by the controlling handler process on the pod once the node is marked unschedulable.
+	first.LastUnschedulable = true
+	return xs, nil
 }

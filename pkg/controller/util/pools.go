@@ -91,11 +91,20 @@ func ToPools(
 	poolSpecs []elasticsearchv1beta1.PoolSpec,
 	statsList []scheduler.PoolStats,
 ) (res, forDeletion []elasticsearchv1beta1.PoolSpec, err error) {
+
+	injectUnschedulableNodes := func(stats scheduler.PoolStats, spec *elasticsearchv1beta1.PoolSpec) {
+		if idx := int(stats.ScheduleReplicas); stats.LastUnschedulable &&
+			!spec.ContainsUnschedulable(idx) {
+			spec.Unschedulable = append(spec.Unschedulable, idx)
+		}
+	}
+
 	for _, stats := range statsList {
 		spec, inSpec := SpecByName(stats.Name, poolSpecs)
 
 		if inSpec {
 			spec.Replicas = stats.ScheduleReplicas
+			injectUnschedulableNodes(stats, &spec)
 			res = append(res, spec)
 		} else if stats.Dangling && stats.ScheduleReplicas == 0 {
 			// is a dangling pool with no replicas; deletable
@@ -117,6 +126,7 @@ func ToPools(
 			}
 
 			found.Spec.Replicas = stats.ScheduleReplicas
+			injectUnschedulableNodes(stats, &found.Spec)
 			res = append(res, found.Spec)
 		}
 
@@ -163,16 +173,15 @@ func ResolvePools(
 ) (
 	[]elasticsearchv1beta1.PoolSpec,
 	[]elasticsearchv1beta1.PoolSpec,
-	int,
 	error,
 ) {
-	stats, pdbNo, err := scheduler.PoolsForScheduling(
+	stats, err := scheduler.PoolsForScheduling(
 		desired,
 		scheduler.ToStats(specs, metrics),
 	)
 
 	if err != nil {
-		return nil, nil, pdbNo, err
+		return nil, nil, err
 	}
 
 	res, forDeletion, err := ToPools(
@@ -184,8 +193,8 @@ func ResolvePools(
 	)
 
 	if err != nil {
-		return nil, nil, pdbNo, err
+		return nil, nil, err
 	}
 
-	return res, forDeletion, pdbNo, nil
+	return res, forDeletion, nil
 }

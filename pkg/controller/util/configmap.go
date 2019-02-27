@@ -99,7 +99,9 @@ func SchedulableConfigMap(
 func generateShardDrainConfig(pool elasticsearchv1beta1.PoolSpec, clusterName string) (string, error) {
 	var conf SchedulableConfig
 	for i := 0; i < int(pool.Replicas); i++ {
-		conf.SchedulableNodes = append(conf.SchedulableNodes, PodName(clusterName, pool.Name, i))
+		if !pool.ContainsUnschedulable(i) {
+			conf.SchedulableNodes = append(conf.SchedulableNodes, PodName(clusterName, pool.Name, i))
+		}
 	}
 	b, err := yaml.Marshal(conf)
 	return string(b), err

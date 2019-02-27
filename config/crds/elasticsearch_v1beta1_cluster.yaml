@@ -55,6 +55,11 @@ spec:
                     type: array
                   storageClass:
                     type: string
+                  unschedulable:
+                    items:
+                      format: int64
+                      type: integer
+                    type: array
                 required:
                 - replicas
                 - name

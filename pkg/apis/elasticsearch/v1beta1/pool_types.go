@@ -24,8 +24,9 @@ import (
 
 // PoolSpec defines the desired state of Pool
 type PoolSpec struct {
-	Replicas int32  `json:"replicas"`
-	Name     string `json:"name"`
+	Replicas      int32  `json:"replicas"`
+	Unschedulable []int  `json:"unschedulable,omitempty"`
+	Name          string `json:"name"`
 	// +kubebuilder:validation:Enum=master,data,ingest
 	Roles     []string                `json:"roles,omitempty"`
 	Resources v1.ResourceRequirements `json:"resources,omitempty"`
@@ -37,12 +38,20 @@ type PoolSpec struct {
 	// TODO: add configMap mounts
 	// TODO: affinity/antiaffinity
 	// TODO: ensure spreading across AZs
-	// TODO: allow choosing of own image/versions for es
 }
 
 func (s *PoolSpec) IsMasterEligible() bool {
 	for _, role := range s.Roles {
 		if role == MasterRole {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *PoolSpec) ContainsUnschedulable(i int) bool {
+	for _, x := range s.Unschedulable {
+		if x == i {
 			return true
 		}
 	}
