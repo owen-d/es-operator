@@ -32,6 +32,10 @@ const (
 	esJavaOpts                = "-Xms256m -Xmx256m"
 )
 
+var (
+	SchedulableFilePath = filepath.Join(schedulingVolumeMountPath, "schedulable.yml")
+)
+
 func ReconcileStatefulSet(
 	client client.Client,
 	scheme *runtime.Scheme,
@@ -68,6 +72,12 @@ func ReconcileStatefulSet(
 
 	podEnv := mkEnv(clusterName, namespace, pool)
 
+	schedulableMount := corev1.VolumeMount{
+		Name:      PoolSchedulableConfigMapName(clusterName, pool.Name),
+		MountPath: schedulingVolumeMountPath,
+		ReadOnly:  true,
+	}
+
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -85,7 +95,7 @@ func ReconcileStatefulSet(
 					Labels: podLabels,
 				},
 				Spec: corev1.PodSpec{
-					InitContainers: mkInitContainers(CatImage(esImage, esTag), maxMapCount),
+					InitContainers: mkInitContainers(CatImage(esImage, esTag), maxMapCount, schedulableMount),
 					Containers: []corev1.Container{
 						{
 							Name:      "elasticsearch",
@@ -120,11 +130,7 @@ func ReconcileStatefulSet(
 									SubPath:   elasticConfigFile,
 									ReadOnly:  true,
 								},
-								{
-									Name:      PoolSchedulableConfigMapName(clusterName, pool.Name),
-									MountPath: schedulingVolumeMountPath,
-									ReadOnly:  true,
-								},
+								schedulableMount,
 							},
 							SecurityContext: &corev1.SecurityContext{
 								Capabilities: &corev1.Capabilities{
@@ -314,7 +320,7 @@ func mkEnv(clusterName string, namespace string, pool elasticsearchv1beta1.PoolS
 	return podEnv
 }
 
-func mkInitContainers(image string, maxMapCount int) []corev1.Container {
+func mkInitContainers(image string, maxMapCount int, schedulingVolumeMount corev1.VolumeMount) []corev1.Container {
 	var user int64 = 0
 	privileged := true
 
@@ -335,6 +341,30 @@ func mkInitContainers(image string, maxMapCount int) []corev1.Container {
 			Resources: corev1.ResourceRequirements{
 				Requests: reqs,
 				Limits:   reqs,
+			},
+		},
+		{
+			Name:    "check-schedulable",
+			Image:   image,
+			Command: []string{"/bin/sh", "-c", `grep "${POD_NAME}" "${SCHEDULABLE_FILE}"`},
+			Resources: corev1.ResourceRequirements{
+				Requests: reqs,
+				Limits:   reqs,
+			},
+			VolumeMounts: []corev1.VolumeMount{schedulingVolumeMount},
+			Env: []corev1.EnvVar{
+				corev1.EnvVar{
+					Name: "POD_NAME",
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.name",
+						},
+					},
+				},
+				corev1.EnvVar{
+					Name:  "SCHEDULABLE_FILE",
+					Value: SchedulableFilePath,
+				},
 			},
 		},
 	}
