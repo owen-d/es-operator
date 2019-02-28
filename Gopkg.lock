@@ -974,6 +974,7 @@
     "github.com/olivere/elastic",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
+    "github.com/spf13/cobra",
     "golang.org/x/net/context",
     "gopkg.in/fsnotify.v1",
     "gopkg.in/yaml.v2",
