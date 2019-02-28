@@ -34,6 +34,7 @@ func Schedulable(conf util.SchedulableConfig, nodeName string) bool {
 // Handler applies shard schedulability based on a config file.
 // It also maintains a ticker which exits the current process if the current node is not schedulable and has no shards
 func main() {
+	setup()
 	files, errs, configDone, err := watcher.ConfigMapChanges(opts.ConfigFile)
 	if err != nil {
 		bail(err)
@@ -42,17 +43,38 @@ func main() {
 	done := make(chan struct{})
 
 	go func() {
+		// create a ticker to ensure an initial routing update is performed.
+		// This is helpful when scaling back up after a node has been marked unschedulable.
+		// It allows the node to remark itself as schedulable in accordance with it's configmap on an initial mount.
+
+		ticker := time.NewTicker(time.Second * 10)
+
 		log("awaiting events")
+
 		for {
+
 			select {
 			case <-configDone:
 				log("watcher exhausted")
 				done <- struct{}{}
 			case err = <-errs:
 				log(err)
+			case <-ticker.C:
+				log(fmt.Sprintf("ensuring initial routing for node [%s]", opts.NodeName))
+				if err = UpdateRouting(); err != nil {
+					log(err)
+				} else {
+					// once the ticker-spawned update completes once, close it.
+					// Successive updates only need be performed in response
+					// to configmap changes
+					ticker.Stop()
+				}
 			case changed := <-files:
 				log("file changed:\n", string(changed))
-				if err = UpdateRouting(changed); err != nil {
+				if err = yaml.Unmarshal(changed, &conf); err != nil {
+					log(err)
+				}
+				if err = UpdateRouting(); err != nil {
 					log(err)
 				}
 			}
@@ -84,11 +106,7 @@ func main() {
 	<-done
 }
 
-func UpdateRouting(fileBytes []byte) (err error) {
-	if err = yaml.Unmarshal(fileBytes, &conf); err != nil {
-		return err
-	}
-
+func UpdateRouting() (err error) {
 	settings, err := GetAllocationSettings(client)
 	if err != nil {
 		return err
@@ -96,24 +114,26 @@ func UpdateRouting(fileBytes []byte) (err error) {
 
 	schedulable := Schedulable(conf, opts.NodeName)
 	if !schedulable && !settings.Excluded(opts.NodeName) {
-		log(fmt.Sprintf(
-			"[%s] marked as unschedulable but not marked as such in elastic, updating elastic...",
-			opts.NodeName,
-		))
 		settings.Exclude(opts.NodeName)
-	} else if schedulable && settings.Excluded(opts.NodeName) {
 		log(fmt.Sprintf(
-			"[%s] marked as schedulable but not marked as such in elastic, updating elastic...",
+			"[%s] marked as unschedulable but not marked as such in elastic, updating elastic with new settings:\n%+v",
 			opts.NodeName,
+			settings,
 		))
+	} else if schedulable && settings.Excluded(opts.NodeName) {
 		settings.Include(opts.NodeName)
+		log(fmt.Sprintf(
+			"[%s] marked as schedulable but not marked as such in elastic, updating elastic with new settings:\n%+v",
+			opts.NodeName,
+			settings,
+		))
 	} else {
 		return nil
 	}
 
 	_, err = PutAllocationSettings(client, settings)
 
-	return nil
+	return err
 }
 
 func bail(err error) {
@@ -128,7 +148,7 @@ func log(args ...interface{}) {
 	fmt.Println(args...)
 }
 
-func init() {
+func setup() {
 	_, err := flags.ParseArgs(&opts, os.Args)
 	if err != nil {
 		os.Exit(1)

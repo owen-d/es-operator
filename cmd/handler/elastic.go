@@ -12,23 +12,6 @@ import (
 	"strings"
 )
 
-/*
-example:
-{
-	"transient": {
-		"cluster": {
-			"routing": {
-				"allocation": {
-					"exclude": {
-						"_name": "mycluster-quorum-master-1"
-					}
-				}
-			}
-		}
-	}
-}
-*/
-
 // TODO: executing these on all nodes definitely exposes us to race conditions where changes
 // can be swallowed.
 type ElasticAllocationSettings struct {
@@ -37,12 +20,12 @@ type ElasticAllocationSettings struct {
 			Routing struct {
 				Allocation struct {
 					Exclude struct {
-						Name string `json:"_name,omitempty"`
+						Name string `json:"_name"`
 					} `json:"exclude,omitempty"`
 				} `json:"allocation,omitempty"`
 			} `json:"routing,omitempty"`
 		} `json:"cluster,omitempty"`
-	} `json:"persistent,omitempty"`
+	} `json:"transient,omitempty"`
 }
 
 func ExistsIn(xs []string, val string) bool {
@@ -52,7 +35,15 @@ func ExistsIn(xs []string, val string) bool {
 		}
 	}
 	return false
+}
 
+func NonEmpty(xs []string) (res []string) {
+	for _, x := range xs {
+		if x != "" {
+			res = append(res, x)
+		}
+	}
+	return res
 }
 
 func (e *ElasticAllocationSettings) Excluded(name string) bool {
@@ -63,7 +54,7 @@ func (e *ElasticAllocationSettings) Exclude(name string) {
 	if e.Excluded(name) {
 		return
 	}
-	exclusions := strings.Split(e.Transient.Cluster.Routing.Allocation.Exclude.Name, ",")
+	exclusions := NonEmpty(strings.Split(e.Transient.Cluster.Routing.Allocation.Exclude.Name, ","))
 	exclusions = append(exclusions, name)
 	e.Transient.Cluster.Routing.Allocation.Exclude.Name = strings.Join(exclusions, ",")
 }
@@ -73,7 +64,7 @@ func (e *ElasticAllocationSettings) Include(name string) {
 		return
 	}
 
-	exclusions := strings.Split(e.Transient.Cluster.Routing.Allocation.Exclude.Name, ",")
+	exclusions := NonEmpty(strings.Split(e.Transient.Cluster.Routing.Allocation.Exclude.Name, ","))
 	newExclusions := []string{}
 
 	for _, exclusion := range exclusions {

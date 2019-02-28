@@ -93,8 +93,10 @@ func ToPools(
 ) (res, forDeletion []elasticsearchv1beta1.PoolSpec, err error) {
 
 	injectUnschedulableNodes := func(stats scheduler.PoolStats, spec *elasticsearchv1beta1.PoolSpec) {
-		if idx := int(stats.ScheduleReplicas); stats.LastUnschedulable &&
-			!spec.ContainsUnschedulable(idx) {
+		// pods are zero-indexed while replica requests are 1-indexed. align them.
+		idx := int(stats.ScheduleReplicas - 1)
+
+		if stats.LastUnschedulable && !spec.ContainsUnschedulable(idx) {
 			spec.Unschedulable = append(spec.Unschedulable, idx)
 		}
 	}

@@ -53,7 +53,7 @@ spec:
                     type: array
                   storageClass:
                     type: string
-                  unschedulable:
+                  unschedulableIndices:
                     items:
                       format: int64
                       type: integer
