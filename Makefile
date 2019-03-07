@@ -90,11 +90,9 @@ docker-push:
 	docker push ${ELASTIC_IMG}
 
 test-data:
-	# curl -XPUT -H 'Content-Type: application/json' "$(CLUSTER_ENDPOINT)/shakespeare?pretty" -d "$$(cat hack/sample-data/shakespeare.json)"
-	# curl -H 'Content-Type: application/x-ndjson' -XPOST "$(CLUSTER_ENDPOINT)/shakespeare/doc/_bulk?pretty" --data-binary @$(SAMPLE_DATA_FILE)
-	curl -XPUT -H 'Content-Type: application/json' "$(CLUSTER_ENDPOINT)/blogs?pretty" -d "$$(cat hack/sample-data/blogs.json)"
-	./bin/es-seed -v -b 500 -f /tmp/all-blogs.xml -i blogs -t doc -u "http://$(CLUSTER_ENDPOINT)"
-	curl -XPUT -H 'Content-Type: application/json' "$(CLUSTER_ENDPOINT)/blogs/_settings?pretty" -d '{"index":{"number_of_replicas":1}}'
+	curl -XPUT -H 'Content-Type: application/json' "$(CLUSTER_ENDPOINT)/asoiaf?pretty" -d "$$(cat hack/sample-data/asoiaf.json)"
+	./bin/es-seed -v -b 500 -f ./scratch/asoiaf.txt -i asoiaf -t doc -u "http://$(CLUSTER_ENDPOINT)"
+	curl -XPUT -H 'Content-Type: application/json' "$(CLUSTER_ENDPOINT)/asoiaf/_settings?pretty" -d '{"index":{"number_of_replicas":1}}'
 
 hq:
 	docker run -p 5000:5000 --name=hq -d -e "HQ_DEFAULT_URL=http://$(CLUSTER_ENDPOINT)" elastichq/elasticsearch-hq

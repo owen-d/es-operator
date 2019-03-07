@@ -7,11 +7,11 @@ metadata:
 spec:
   # Add fields here
   nodePools:
-    - name: master
+    - name: master-next
       roles:
         - master
         - data
-      replicas: 3
+      replicas: 2
       storageClass: "standard"
       resources:
         requests:
