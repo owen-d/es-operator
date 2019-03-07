@@ -8,6 +8,9 @@ SAMPLE_DATA_FILE ?= $$HOME/Downloads/shakespeare_6.0.json
 
 all: test manager
 
+echo-cluster:
+	@echo $(CLUSTER_ENDPOINT)
+
 ping:
 	curl $(CLUSTER_ENDPOINT)/_cluster/health | jq '.'
 
@@ -101,4 +104,7 @@ rm-hq:
 	docker stop hq && docker rm hq || :
 
 cleanup: rm-hq
+	minikube stop
+
+teardown: rm-hq
 	minikube delete
